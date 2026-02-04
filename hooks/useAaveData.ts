@@ -569,6 +569,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
   const createInitial = (market: AaveMarketDataType) => {
     const hf: HealthFactorData = {
       address,
+      resolvedAddress: address, // Will be resolved when data is fetched
       fetchError: "",
       isFetching: true,
       lastFetched: 0,
@@ -1449,7 +1450,9 @@ export const getCalculatedLiquidationScenario = (
 export const getIconNameFromAssetSymbol = (assetSymbol: string) => {
   if (!assetSymbol) return "";
 
+
   let iconName = assetSymbol.toLowerCase();
+
 
   // Handle special PT (Principal Token) cases
   if (iconName.includes("pt-")) {
@@ -1463,6 +1466,7 @@ export const getIconNameFromAssetSymbol = (assetSymbol: string) => {
     }
   }
 
+
   // Handle Ethereal/Ethena tokens
   if (iconName.includes("ethereal") || iconName.includes("ethena")) {
     // Extract the base token from the long name
@@ -1474,12 +1478,14 @@ export const getIconNameFromAssetSymbol = (assetSymbol: string) => {
     }
   }
 
+
   // Apply standard transformations
   iconName = iconName
     .replace(".e", "")
     .replace(".b", "")
     .replace("m.", "")
     .replace("btcb", "btc");
+
 
   return iconName;
 };
