@@ -32,10 +32,18 @@ export default function HomePage() {
   const isValidAddress: boolean =
     ethers.utils.isAddress(address) || isValidENSAddress(address);
   const { currentAddress, setCurrentAddress } = useAaveData(
-    isValidAddress ? address : ""
+    isValidAddress ? address : "",
   );
 
   const locale = router?.locale;
+
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     console.log("set address");
+  //     useAaveData(address);
+  //   }, 30000);
+  //   return () => clearInterval(interval);
+  // });
 
   useEffect(() => {
     // ensure current address is correctly set from url
@@ -74,8 +82,8 @@ const SplashSection = () => {
         <Text fz="md" ta="center" span>
           <Trans>
             Paste an address with an Aave debt position in the box above to
-            visualize how changes to borrow/supplied assets affect the position's
-            health factor and borrowing power.
+            visualize how changes to borrow/supplied assets affect the
+            position's health factor and borrowing power.
           </Trans>
         </Text>
       </Center>
@@ -193,10 +201,8 @@ export const RandomAddressButton = ({ children }: RandomAddressButtonProps) => {
     "0xbbd01f9b63ae317c55b9a6837c51bb2b6394b5d5",
     "0x91cfbce901ebec39e5fcd4416893a5632b6da004",
     "0xb7fb2b774eb5e2dad9c060fb367acbdc7fa7099b",
-    "0x965cc423e416827efc108e64103f7ea"
-  ]
-
-
+    "0x965cc423e416827efc108e64103f7ea",
+  ];
 
   const address = addresses[getRandomInt(0, addresses.length)];
 
@@ -204,7 +210,7 @@ export const RandomAddressButton = ({ children }: RandomAddressButtonProps) => {
     Children.map(children, (child) =>
       cloneElement(child as ReactElement, {
         onClick: () => router.push(`?address=${address}`),
-      })
+      }),
     );
 
   return children ? (
@@ -234,8 +240,8 @@ const ExperimentalAlert = () => {
       closeButtonLabel={t`Close alert`}
     >
       <Trans>
-        This Aave debt simulator and liquidation calculator is experimental. Don't make financial decisions
-        based solely on the results of this app.
+        This Aave debt simulator and liquidation calculator is experimental.
+        Don't make financial decisions based solely on the results of this app.
       </Trans>
     </Alert>
   );

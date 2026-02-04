@@ -138,19 +138,19 @@ export default function AddAssetDialog({ assetType }: AddAssetDialogProps) {
         <List>
           {assets.map((asset) => {
             // Truncate very long token names for better display
-            const displayName = asset.name.length > 50 
-              ? `${asset.name.substring(0, 47)}...` 
+            const displayName = asset.name.length > 50
+              ? `${asset.name.substring(0, 47)}...`
               : asset.name;
-            
+
             // Check if this is a special PT token that shouldn't show parentheses
-            const isSpecialPTToken = asset.symbol.toLowerCase().includes('pt-') || 
-                                   asset.name.toLowerCase().includes('pt ethereal') || 
-                                   asset.name.toLowerCase().includes('pt ethena');
-            
-            const displayText = isSpecialPTToken 
-              ? displayName 
+            const isSpecialPTToken = asset.symbol.toLowerCase().includes('pt-') ||
+              asset.name.toLowerCase().includes('pt ethereal') ||
+              asset.name.toLowerCase().includes('pt ethena');
+
+            const displayText = isSpecialPTToken
+              ? displayName
               : `${displayName} (${asset.symbol})`;
-            
+
             return (
               <List.Item
                 key={`${asset.symbol}-${asset.name}`}

@@ -38,11 +38,19 @@ import {
   Progress,
   Indicator,
 } from "@mantine/core";
-import { FaAsterisk, FaInfinity, FaInfo, FaInfoCircle, FaBolt } from "react-icons/fa";
+import {
+  FaAsterisk,
+  FaInfinity,
+  FaInfo,
+  FaInfoCircle,
+  FaBolt,
+} from "react-icons/fa";
 import { RxReset } from "react-icons/rx";
 import { CgRemoveR } from "react-icons/cg";
 import { ImmutableArray, ImmutableObject } from "@hookstate/core";
 import AddAssetDialog from "./AddAssetDialog";
+import SwapDebtDialog from "./SwapDebtDialog";
+import SwapCollateralDialog from "./SwapCollateralDialog";
 
 import {
   useAaveData,
@@ -67,7 +75,7 @@ import BorrowedAssetDetailsDialog from "./BorrowedAssetDetailsDialog";
 
 type Props = {};
 
-const AddressCard = ({ }: Props) => {
+const AddressCard = ({}: Props) => {
   const { addressData, currentMarket, applyLiquidationScenario, isFetching } =
     useAaveData("");
   const data = addressData?.[currentMarket] as HealthFactorData;
@@ -149,11 +157,14 @@ export const HealthFactorAddressSummary = ({
 }: HealthFactorAddressSummaryProps) => {
   const { isFetching, currentAddress, currentMarket } = useAaveData("");
   const count = markets.filter(
-    (market) => addressData?.[market.id]?.fetchedData?.healthFactor > -1
+    (market) => addressData?.[market.id]?.fetchedData?.healthFactor > -1,
   ).length;
 
-  const market: AaveMarketDataType = markets.find(mkts => mkts.id === currentMarket);
-  const isEmode: boolean = (addressData?.[currentMarket]?.workingData?.userEmodeCategoryId || 0) !== 0;
+  const market: AaveMarketDataType = markets.find(
+    (mkts) => mkts.id === currentMarket,
+  );
+  const isEmode: boolean =
+    (addressData?.[currentMarket]?.workingData?.userEmodeCategoryId || 0) !== 0;
 
   if (isFetching) {
     return (
@@ -173,8 +184,7 @@ export const HealthFactorAddressSummary = ({
             <Trans>Found</Trans> Aave{" "}
             <Plural value={Number(count)} one="position" other="positions" />{" "}
             <Trans>in</Trans> {count}{" "}
-            <Plural value={Number(count)} one="market" other="markets" />
-            .
+            <Plural value={Number(count)} one="market" other="markets" />.
           </Text>
         ) : (
           <Text size="sm" style={{ display: "inline-block" }}>
@@ -189,7 +199,15 @@ export const HealthFactorAddressSummary = ({
         <Text span size="sm" mt="md" style={{ display: "inline-block" }}>
           {market && ` ${market.title} `}
           {market && <Trans>market selected.</Trans>}
-          {isEmode && <Trans> <Text ml="xs" span><FaBolt />E-mode is enabled by user.</Text></Trans>}
+          {isEmode && (
+            <Trans>
+              {" "}
+              <Text ml="xs" span>
+                <FaBolt />
+                E-mode is enabled by user.
+              </Text>
+            </Trans>
+          )}
         </Text>
       </Center>
 
@@ -328,11 +346,11 @@ const HealthFactorSummary = ({
 
   const originalHealthFactorDisplayable: string = formatNumber(
     Math.max(data.fetchedData?.healthFactor || 0, 0),
-    2
+    2,
   );
 
   const hfColor: string = getHealthFactorColor(
-    data.workingData?.healthFactor || 0
+    data.workingData?.healthFactor || 0,
   );
 
   const healthFactorElem: ReactElement =
@@ -348,7 +366,7 @@ const HealthFactorSummary = ({
   const healthFactorDiffers: boolean =
     addressHasPosition &&
     data.workingData?.healthFactor?.toFixed(2) !==
-    data.fetchedData?.healthFactor?.toFixed(2);
+      data.fetchedData?.healthFactor?.toFixed(2);
 
   const originalTotalBorrowsUSD: number =
     data.fetchedData?.totalBorrowsUSD ?? 0;
@@ -356,32 +374,32 @@ const HealthFactorSummary = ({
   const totalBorrowsDiffers: boolean =
     addressHasPosition &&
     data.fetchedData?.totalBorrowsUSD?.toFixed(2) !==
-    data.workingData?.totalBorrowsUSD?.toFixed(2);
+      data.workingData?.totalBorrowsUSD?.toFixed(2);
 
   const originalAvailableBorrowsUSD: number = Math.max(
     data.fetchedData?.availableBorrowsUSD ?? 0,
-    0
+    0,
   );
 
   const availableBorrowsUSD: number = Math.max(
     data.workingData?.availableBorrowsUSD ?? 0,
-    0
+    0,
   );
 
   const availableBorrowsDiffers: boolean =
     addressHasPosition &&
     data.fetchedData?.availableBorrowsUSD?.toFixed(2) !==
-    data.workingData?.availableBorrowsUSD?.toFixed(2);
+      data.workingData?.availableBorrowsUSD?.toFixed(2);
 
   const originalTotalCollateralUSD: number =
     data.fetchedData?.userReservesData.reduce(
       (acc, item) => (acc += item.underlyingBalanceUSD),
-      0
+      0,
     ) ?? 0;
   const totalCollateralUSD: number =
     data.workingData?.userReservesData.reduce(
       (acc, item) => (acc += item.underlyingBalanceUSD),
-      0
+      0,
     ) ?? 0;
 
   const totalCollateralDiffers: boolean =
@@ -399,9 +417,9 @@ const HealthFactorSummary = ({
     (
       originalTotalCollateralUSD - (data.fetchedData?.totalBorrowsUSD ?? 0)
     ).toFixed(2) !==
-    (totalCollateralUSD - (data.workingData?.totalBorrowsUSD ?? 0)).toFixed(
-      2
-    );
+      (totalCollateralUSD - (data.workingData?.totalBorrowsUSD ?? 0)).toFixed(
+        2,
+      );
 
   return (
     <div ref={summaryRef} style={{ position: "sticky", top: "0", zIndex: "5" }}>
@@ -569,9 +587,9 @@ const HealthFactorSummary = ({
               <Popover.Dropdown>
                 <Trans>
                   <Text size="sm">
-                    Net Asset Value represents the sum of the supplied asset value
-                    subtracted by the sum of the borrowed asset value, expressed in
-                    the selected fiat currency.
+                    Net Asset Value represents the sum of the supplied asset
+                    value subtracted by the sum of the borrowed asset value,
+                    expressed in the selected fiat currency.
                   </Text>
                 </Trans>
               </Popover.Dropdown>
@@ -645,7 +663,7 @@ const ExtendedPositionDetails = ({ data }: ExtendedPositionDetailsProps) => {
   /** BORROWING POWER */
   const availableBorrowsUSD: number = Math.max(
     data.workingData?.availableBorrowsUSD ?? 0,
-    0
+    0,
   );
 
   const originalTotalBorrowsUSD: number =
@@ -655,7 +673,7 @@ const ExtendedPositionDetails = ({ data }: ExtendedPositionDetailsProps) => {
 
   const originalAvailableBorrowsUSD: number = Math.max(
     data.fetchedData?.availableBorrowsUSD ?? 0,
-    0
+    0,
   );
 
   const currentCumulativeAvailableBorrows =
@@ -684,13 +702,13 @@ const ExtendedPositionDetails = ({ data }: ExtendedPositionDetailsProps) => {
   const originalWorkingLTV = Math.min(
     100,
     (100 * (data.fetchedData?.totalBorrowsMarketReferenceCurrency || 1)) /
-    (data.fetchedData?.totalCollateralMarketReferenceCurrency || 1)
+      (data.fetchedData?.totalCollateralMarketReferenceCurrency || 1),
   );
 
   const currentWorkingLTV = Math.min(
     100,
     (100 * (data.workingData?.totalBorrowsMarketReferenceCurrency || 1)) /
-    (data.workingData?.totalCollateralMarketReferenceCurrency || 1)
+      (data.workingData?.totalCollateralMarketReferenceCurrency || 1),
   );
 
   const originalWorkingLTVDisplayable = origHasBorrows
@@ -705,7 +723,7 @@ const ExtendedPositionDetails = ({ data }: ExtendedPositionDetailsProps) => {
     originalWorkingLTVDisplayable !== currentWorkingLTVDisplayable;
 
   const hfColor: string = getHealthFactorColor(
-    data.workingData?.healthFactor || 0
+    data.workingData?.healthFactor || 0,
   );
 
   return (
@@ -798,9 +816,9 @@ const ExtendedPositionDetails = ({ data }: ExtendedPositionDetailsProps) => {
                   <Popover.Dropdown>
                     <Trans>
                       <Text size="sm">
-                        Maximum Loan to Value refers to the loan to value percentage
-                        where new loans may not be initiated. This value applies
-                        to the overall position.
+                        Maximum Loan to Value refers to the loan to value
+                        percentage where new loans may not be initiated. This
+                        value applies to the overall position.
                       </Text>
                     </Trans>
                   </Popover.Dropdown>
@@ -930,7 +948,7 @@ const LiquidationScenario = ({
 
   const scenario: AssetDetails[] = getCalculatedLiquidationScenario(
     data?.workingData as AaveHealthFactorData,
-    data?.marketReferenceCurrencyPriceInUSD
+    data?.marketReferenceCurrencyPriceInUSD,
   );
 
   const noScenarioLabel = <Trans>No Liquidation Scenario Available</Trans>;
@@ -991,13 +1009,13 @@ const LiquidationScenario = ({
                 <Popover.Dropdown>
                   <Trans>
                     <Text size="sm">
-                      The price liquidation scenario represents
-                      supplied asset prices slightly greater than the prices that could subject the
-                      position to liquidation. Stable assets are not included in
-                      this scenario and are assumed to maintain their present
-                      value. Many factors affect liquidation. This scenario is
-                      only one example for reference. Many different scenarios
-                      can trigger liquidation.
+                      The price liquidation scenario represents supplied asset
+                      prices slightly greater than the prices that could subject
+                      the position to liquidation. Stable assets are not
+                      included in this scenario and are assumed to maintain
+                      their present value. Many factors affect liquidation. This
+                      scenario is only one example for reference. Many different
+                      scenarios can trigger liquidation.
                       <a
                         href="https://docs.aave.com/faq/liquidations"
                         target="_blank"
@@ -1013,7 +1031,7 @@ const LiquidationScenario = ({
               </Popover>
               {scenario.map((liqAsset) => {
                 const workingAsset = data.workingData?.userReservesData.find(
-                  (reserve) => reserve.asset.symbol === liqAsset.symbol
+                  (reserve) => reserve.asset.symbol === liqAsset.symbol,
                 )?.asset;
                 const currentAssetPrice = workingAsset
                   ? workingAsset.priceInUSD
@@ -1032,7 +1050,11 @@ const LiquidationScenario = ({
                 );
 
                 return (
-                  <Tooltip key={liqAsset.symbol} label={t`${liqAsset.symbol} liquidation price`} withArrow>
+                  <Tooltip
+                    key={liqAsset.symbol}
+                    label={t`${liqAsset.symbol} liquidation price`}
+                    withArrow
+                  >
                     <Badge
                       pl={0}
                       size="lg"
@@ -1072,7 +1094,7 @@ const LiquidationScenario = ({
   );
 };
 
-const ResetMarketButton = ({ }) => {
+const ResetMarketButton = ({}) => {
   const { addressData, currentMarket, resetCurrentMarketChanges } =
     useAaveData("");
   const data = addressData?.[currentMarket];
@@ -1153,7 +1175,10 @@ const UserReserveAssetList = ({ summaryOffset }: UserReserveAssetListProps) => {
         <Title order={4} sx={{ marginBottom: "10px" }}>
           <Trans>Supplied Assets</Trans>
         </Title>
-        <AddAssetDialog assetType="RESERVE" />
+        <Group spacing="xs">
+          <AddAssetDialog assetType="RESERVE" />
+          {items.length > 0 && <SwapCollateralDialog />}
+        </Group>
       </Container>
       {items.length === 0 && (
         <Center>
@@ -1170,30 +1195,36 @@ const UserReserveAssetList = ({ summaryOffset }: UserReserveAssetListProps) => {
         const originalAsset = addressData?.[
           currentMarket
         ]?.fetchedData?.userReservesData?.find(
-          (asset) => asset.asset.symbol === item.asset.symbol
+          (asset) => asset.asset.symbol === item.asset.symbol,
         );
+        const showItem =
+          item.underlyingBalance > 0 || !!item.asset.isNewlyAddedBySimUser;
         return (
-          <UserAssetItem
-            key={`${item.asset.symbol}-RESERVE`}
-            assetSymbol={item.asset.symbol}
-            assetDetails={item.asset}
-            usageAsCollateralEnabledOnUser={item.usageAsCollateralEnabledOnUser}
-            assetType="RESERVE"
-            workingQuantity={item.underlyingBalance}
-            originalQuantity={originalAsset?.underlyingBalance ?? 0}
-            workingPrice={item.asset.priceInUSD}
-            originalPrice={item.asset.initialPriceInUSD ?? 0}
-            onAddAsset={addReserveAsset}
-            onRemoveAsset={removeAsset}
-            setAssetPriceInUSD={setAssetPriceInUSD}
-            setAssetQuantity={setReserveAssetQuantity}
-            setUseReserveAssetAsCollateral={setUseReserveAssetAsCollateral}
-            disableSetUseReserveAssetAsCollateral={
-              !item.asset.usageAsCollateralEnabled
-            }
-            isNewlyAddedBySimUser={!!item.asset.isNewlyAddedBySimUser}
-            locale={i18n?.locale || ""}
-          />
+          showItem ? (
+            <UserAssetItem
+              key={`${item.asset.symbol}-RESERVE`}
+              assetSymbol={item.asset.symbol}
+              assetDetails={item.asset}
+              usageAsCollateralEnabledOnUser={
+                item.usageAsCollateralEnabledOnUser
+              }
+              assetType="RESERVE"
+              workingQuantity={item.underlyingBalance}
+              originalQuantity={originalAsset?.underlyingBalance ?? 0}
+              workingPrice={item.asset.priceInUSD}
+              originalPrice={item.asset.initialPriceInUSD ?? 0}
+              onAddAsset={addReserveAsset}
+              onRemoveAsset={removeAsset}
+              setAssetPriceInUSD={setAssetPriceInUSD}
+              setAssetQuantity={setReserveAssetQuantity}
+              setUseReserveAssetAsCollateral={setUseReserveAssetAsCollateral}
+              disableSetUseReserveAssetAsCollateral={
+                !item.asset.usageAsCollateralEnabled
+              }
+              isNewlyAddedBySimUser={!!item.asset.isNewlyAddedBySimUser}
+              locale={i18n?.locale || ""}
+            />
+          ) : null
         );
       })}
     </div>
@@ -1240,7 +1271,10 @@ const UserBorrowedAssetList = ({
         <Title order={4} sx={{ marginBottom: "10px" }}>
           <Trans>Borrowed Assets</Trans>
         </Title>
-        <AddAssetDialog assetType="BORROW" />
+        <Group spacing="xs">
+          <AddAssetDialog assetType="BORROW" />
+          {items.length > 0 && <SwapDebtDialog />}
+        </Group>
       </Container>
       {items.length === 0 && (
         <Center>
@@ -1257,7 +1291,7 @@ const UserBorrowedAssetList = ({
         const originalAsset = addressData?.[
           currentMarket
         ]?.fetchedData?.userBorrowsData?.find(
-          (asset) => asset.asset.symbol === item.asset.symbol
+          (asset) => asset.asset.symbol === item.asset.symbol,
         );
         return (
           <UserAssetItem
@@ -1288,7 +1322,7 @@ const UserBorrowedAssetList = ({
 
 const UserAssetItemPropsChecker = (
   oldProps: UserAssetItemProps,
-  newProps: UserAssetItemProps
+  newProps: UserAssetItemProps,
 ) => {
   const oldQuantity = oldProps.workingQuantity;
   const oldPriceInUSD = oldProps.workingPrice;
@@ -1347,7 +1381,7 @@ const UserAssetItem = memo(
     isNewlyAddedBySimUser,
     assetDetails,
     isStableBorrow = false,
-    stableBorrowAPY = 0
+    stableBorrowAPY = 0,
   }: UserAssetItemProps) => {
     return (
       <Paper mt="xl" mb="xl" withBorder p="xs" bg="#282a2e">
@@ -1363,21 +1397,27 @@ const UserAssetItem = memo(
             </Text>
             <Divider orientation="vertical" variant="dotted" />
             <Text fz="xs" span>
-              <AssetAPY assetType={assetType} assetDetails={assetDetails} isStableBorrow={isStableBorrow} stableBorrowAPY={stableBorrowAPY} />
+              <AssetAPY
+                assetType={assetType}
+                assetDetails={assetDetails}
+                isStableBorrow={isStableBorrow}
+                stableBorrowAPY={stableBorrowAPY}
+              />
             </Text>
             <Divider orientation="vertical" variant="dotted" />
 
-            {assetType === "RESERVE"
-              ? <ReserveAssetDetailsDialog assetDetails={assetDetails} />
-              : <BorrowedAssetDetailsDialog assetDetails={assetDetails} isStableBorrow={isStableBorrow} stableBorrowAPY={stableBorrowAPY} />
-            }
+            {assetType === "RESERVE" ? (
+              <ReserveAssetDetailsDialog assetDetails={assetDetails} />
+            ) : (
+              <BorrowedAssetDetailsDialog
+                assetDetails={assetDetails}
+                isStableBorrow={isStableBorrow}
+                stableBorrowAPY={stableBorrowAPY}
+              />
+            )}
           </Group>
 
-          <Tooltip
-            label={t`Remove ${assetSymbol}`}
-            position="left"
-            withArrow
-          >
+          <Tooltip label={t`Remove ${assetSymbol}`} position="left" withArrow>
             <ActionIcon>
               <CgRemoveR
                 title={t`Remove ${assetSymbol}`}
@@ -1386,7 +1426,6 @@ const UserAssetItem = memo(
               />
             </ActionIcon>
           </Tooltip>
-
         </Flex>
 
         <Grid columns={17}>
@@ -1453,7 +1492,7 @@ const UserAssetItem = memo(
       </Paper>
     );
   },
-  UserAssetItemPropsChecker
+  UserAssetItemPropsChecker,
 );
 
 type UserAssetItemQuantityPriceSummaryProps = {
@@ -1504,9 +1543,9 @@ const UserAssetUseAsCollateralToggle = ({
   const handleSetUseReserveAssetAsCollateral = () => {
     setUseReserveAssetAsCollateral !== undefined
       ? setUseReserveAssetAsCollateral(
-        assetSymbol,
-        !usageAsCollateralEnabledOnUser
-      )
+          assetSymbol,
+          !usageAsCollateralEnabledOnUser,
+        )
       : null;
   };
 
@@ -1580,7 +1619,15 @@ const UserAssetQuantityInput = ({
         size="md"
         type="number"
         inputWrapperOrder={["label", "error", "input", "description"]}
-        inputContainer={children => <Indicator zIndex="3" disabled={!originalQuantity || (originalQuantity === workingQuantity)} color="#FFFF00">{children}</Indicator>}
+        inputContainer={(children) => (
+          <Indicator
+            zIndex="3"
+            disabled={!originalQuantity || originalQuantity === workingQuantity}
+            color="#FFFF00"
+          >
+            {children}
+          </Indicator>
+        )}
         rightSection={resetIcon}
       />
 
@@ -1607,7 +1654,7 @@ const ResetInputValueIcon = ({
 
   const label = (
     <Trans>{`Reset to Original Value (${ensureTinyNumberFormatting(
-      originalValue
+      originalValue,
     )})`}</Trans>
   );
   return (
@@ -1717,7 +1764,15 @@ const UserAssetPriceInput = ({
         size="md"
         ref={inputRef}
         inputWrapperOrder={["label", "error", "input", "description"]}
-        inputContainer={children => <Indicator zIndex="3" disabled={!originalPrice || (originalPrice === workingPrice)} color="#FFFF00">{children}</Indicator>}
+        inputContainer={(children) => (
+          <Indicator
+            zIndex="3"
+            disabled={!originalPrice || originalPrice === workingPrice}
+            color="#FFFF00"
+          >
+            {children}
+          </Indicator>
+        )}
         rightSection={resetIcon}
       />
       <Slider
@@ -1772,7 +1827,7 @@ const Slider = ({ defaultValue, onChange }: SliderProps) => {
           "50%": [Math.max(defaultValue, 1)],
           "85%": [Math.max(defaultValue * 2, 2)],
           max: [Math.max(defaultValue * 20, 20)],
-        }
+        },
       })
       .on("slide", handleChange);
 

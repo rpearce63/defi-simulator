@@ -20,6 +20,7 @@ import {
   Title,
   Center,
   Indicator,
+  Checkbox,
 } from "@mantine/core";
 import { BiGhost } from "react-icons/bi";
 import {
@@ -60,8 +61,14 @@ const useStyles = createStyles((theme) => ({
 
 export default function AppBar() {
   const [hasMarketMenuOpened, setHasMarketMenuOpened] = React.useState(false);
-  const { addressData, currentMarket, setCurrentMarket, currentAddress } =
-    useAaveData("");
+  const {
+    addressData,
+    currentMarket,
+    setCurrentMarket,
+    currentAddress,
+    setRefreshState,
+    isRefreshActive,
+  } = useAaveData("");
   const { classes, cx } = useStyles();
   const router = useRouter();
 
@@ -76,7 +83,7 @@ export default function AppBar() {
   };
 
   const currentMarketData = markets.find(
-    (market) => market.id === currentMarket
+    (market) => market.id === currentMarket,
   );
   const currentMarketIcon = (
     <img
@@ -104,6 +111,17 @@ export default function AppBar() {
           >
             DeFi Simulator
           </Title>
+          <Group onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              label="Refresh"
+              checked={isRefreshActive}
+              onChange={() =>
+                setRefreshState()
+              }
+            />
+
+          </Group>
+
         </Group>
 
         <Indicator

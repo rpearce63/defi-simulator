@@ -35,19 +35,25 @@ export type AaveHealthFactorData = {
   userEmodeCategoryId?: number;
   isInIsolationMode?: boolean;
   txHistory: TxHistory;
-}
+};
 
 export type TxHistory = {
-  data: TxHistoryItem[],
-  isFetching: boolean,
-  fetchError: string,
-  lastFetched: number
-}
+  data: TxHistoryItem[];
+  isFetching: boolean;
+  fetchError: string;
+  lastFetched: number;
+};
 
 export type TxHistoryItem = {
   id: string;
   txHash: string;
-  action: "Borrow" | "Repay" | "Supply" | "Deposit" | "RedeemUnderlying" | "LiquidationCall";
+  action:
+  | "Borrow"
+  | "Repay"
+  | "Supply"
+  | "Deposit"
+  | "RedeemUnderlying"
+  | "LiquidationCall";
   amount?: number; // absent for liquidationCall
   reserve?: TxHistoryReserveItem; // absent for liquidationCall
   timestamp: number;
@@ -61,14 +67,14 @@ export type TxHistoryItem = {
   principalAmount?: number;
   principalReserve?: TxHistoryReserveItem;
   principalPriceUSD?: string;
-}
+};
 
 export type TxHistoryReserveItem = {
   symbol: string;
   decimals: string;
   name: string;
   underlyingAsset: string;
-}
+};
 
 export type ReserveAssetDataItem = {
   asset: AssetDetails;
@@ -127,7 +133,7 @@ export type AssetDetails = {
   totalStableDebt?: number;
   totalVariableDebt?: number;
   totalLiquidity?: number;
-  flashLoanEnabled?: boolean
+  flashLoanEnabled?: boolean;
   // Incentive Data
   supplyAPY?: number;
   variableBorrowAPY?: number;
@@ -135,7 +141,6 @@ export type AssetDetails = {
   supplyAPR?: number;
   variableBorrowAPR?: number;
   stableBorrowAPR?: number;
-
 };
 
 /**
@@ -165,79 +170,79 @@ export type AaveMarketDataType = {
   addresses: {
     LENDING_POOL_ADDRESS_PROVIDER: string;
     UI_POOL_DATA_PROVIDER: string;
-    UI_INCENTIVE_DATA_PROVIDER: string
+    UI_INCENTIVE_DATA_PROVIDER: string;
   };
   explorer: string;
   explorerName: string;
-  subgraphUrl: string
+  subgraphUrl: string;
 };
 
 export const markets: AaveMarketDataType[] = [
-  {
-    v3: false,
-    id: "ETHEREUM_V2",
-    title: "Ethereum v2",
-    chainId: ChainId.mainnet,
-    api: `https://eth-mainnet.alchemyapi.io/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
-    addresses: {
-      LENDING_POOL_ADDRESS_PROVIDER:
-        pools.AaveV2Ethereum.POOL_ADDRESSES_PROVIDER,
-      UI_POOL_DATA_PROVIDER: pools.AaveV2Ethereum.UI_POOL_DATA_PROVIDER,
-      UI_INCENTIVE_DATA_PROVIDER: pools.AaveV2Ethereum.UI_INCENTIVE_DATA_PROVIDER
-    },
-    explorer: "https://etherscan.io/address/{{ADDRESS}}",
-    explorerName: "Etherscan",
-    subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v2',
+  // {
+  //   v3: false,
+  //   id: "ETHEREUM_V2",
+  //   title: "Ethereum v2",
+  //   chainId: ChainId.mainnet,
+  //   api: `https://eth-mainnet.alchemyapi.io/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
+  //   addresses: {
+  //     LENDING_POOL_ADDRESS_PROVIDER:
+  //       pools.AaveV2Ethereum.POOL_ADDRESSES_PROVIDER,
+  //     UI_POOL_DATA_PROVIDER: pools.AaveV2Ethereum.UI_POOL_DATA_PROVIDER,
+  //     UI_INCENTIVE_DATA_PROVIDER: pools.AaveV2Ethereum.UI_INCENTIVE_DATA_PROVIDER
+  //   },
+  //   explorer: "https://etherscan.io/address/{{ADDRESS}}",
+  //   explorerName: "Etherscan",
+  //   subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v2',
 
-  },
-  {
-    v3: true,
-    id: "ETHEREUM_V3",
-    title: "Ethereum v3",
-    chainId: ChainId.mainnet,
-    api: `https://eth-mainnet.alchemyapi.io/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
-    addresses: {
-      LENDING_POOL_ADDRESS_PROVIDER:
-        pools.AaveV3Ethereum.POOL_ADDRESSES_PROVIDER,
-      UI_POOL_DATA_PROVIDER: "0x194324C9Af7f56E22F1614dD82E18621cb9238E7",
-      UI_INCENTIVE_DATA_PROVIDER: "0x5a40cDe2b76Da2beD545efB3ae15708eE56aAF9c"
-    },
-    explorer: "https://etherscan.io/address/{{ADDRESS}}",
-    explorerName: "Etherscan",
-    subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v3',
-  },
-  {
-    v3: true,
-    id: "ARBITRUM_V3",
-    title: "Arbitrum v3",
-    chainId: ChainId.arbitrum_one,
-    api: `https://arb-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
-    addresses: {
-      LENDING_POOL_ADDRESS_PROVIDER:
-        pools.AaveV3Arbitrum.POOL_ADDRESSES_PROVIDER,
-      UI_POOL_DATA_PROVIDER: "0xc0179321f0825c3e0F59Fe7Ca4E40557b97797a3", // pools.AaveV3Arbitrum.UI_POOL_DATA_PROVIDER,
-      UI_INCENTIVE_DATA_PROVIDER: "0xE92cd6164CE7DC68e740765BC1f2a091B6CBc3e4" // pools.AaveV3Arbitrum.UI_INCENTIVE_DATA_PROVIDER
-    },
-    explorer: "https://arbiscan.io/address/{{ADDRESS}}",
-    explorerName: "Arbiscan",
-    subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v3-arbitrum',
-  },
-  {
-    v3: true,
-    id: "OPTIMISM_V3",
-    title: "Optimism v3",
-    chainId: ChainId.optimism,
-    api: `https://opt-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
-    addresses: {
-      LENDING_POOL_ADDRESS_PROVIDER:
-        pools.AaveV3Optimism.POOL_ADDRESSES_PROVIDER,
-      UI_POOL_DATA_PROVIDER: "0x86b0521f92a554057e54B93098BA2A6Aaa2F4ACB", // pools.AaveV3Optimism.UI_POOL_DATA_PROVIDER,
-      UI_INCENTIVE_DATA_PROVIDER: "0xc0179321f0825c3e0F59Fe7Ca4E40557b97797a3" // pools.AaveV3Optimism.UI_INCENTIVE_DATA_PROVIDER
-    },
-    explorer: "https://optimistic.etherscan.io/address/{{ADDRESS}}",
-    explorerName: "Optimistic Etherscan",
-    subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v3-optimism',
-  },
+  // },
+  // {
+  //   v3: true,
+  //   id: "ETHEREUM_V3",
+  //   title: "Ethereum v3",
+  //   chainId: ChainId.mainnet,
+  //   api: `https://eth-mainnet.alchemyapi.io/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
+  //   addresses: {
+  //     LENDING_POOL_ADDRESS_PROVIDER:
+  //       pools.AaveV3Ethereum.POOL_ADDRESSES_PROVIDER,
+  //     UI_POOL_DATA_PROVIDER: "0x194324C9Af7f56E22F1614dD82E18621cb9238E7",
+  //     UI_INCENTIVE_DATA_PROVIDER: "0x5a40cDe2b76Da2beD545efB3ae15708eE56aAF9c"
+  //   },
+  //   explorer: "https://etherscan.io/address/{{ADDRESS}}",
+  //   explorerName: "Etherscan",
+  //   subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v3',
+  // },
+  // {
+  //   v3: true,
+  //   id: "ARBITRUM_V3",
+  //   title: "Arbitrum v3",
+  //   chainId: ChainId.arbitrum_one,
+  //   api: `https://arb-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
+  //   addresses: {
+  //     LENDING_POOL_ADDRESS_PROVIDER:
+  //       pools.AaveV3Arbitrum.POOL_ADDRESSES_PROVIDER,
+  //     UI_POOL_DATA_PROVIDER: "0xc0179321f0825c3e0F59Fe7Ca4E40557b97797a3", // pools.AaveV3Arbitrum.UI_POOL_DATA_PROVIDER,
+  //     UI_INCENTIVE_DATA_PROVIDER: "0xE92cd6164CE7DC68e740765BC1f2a091B6CBc3e4" // pools.AaveV3Arbitrum.UI_INCENTIVE_DATA_PROVIDER
+  //   },
+  //   explorer: "https://arbiscan.io/address/{{ADDRESS}}",
+  //   explorerName: "Arbiscan",
+  //   subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v3-arbitrum',
+  // },
+  // {
+  //   v3: true,
+  //   id: "OPTIMISM_V3",
+  //   title: "Optimism v3",
+  //   chainId: ChainId.optimism,
+  //   api: `https://opt-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
+  //   addresses: {
+  //     LENDING_POOL_ADDRESS_PROVIDER:
+  //       pools.AaveV3Optimism.POOL_ADDRESSES_PROVIDER,
+  //     UI_POOL_DATA_PROVIDER: "0x86b0521f92a554057e54B93098BA2A6Aaa2F4ACB", // pools.AaveV3Optimism.UI_POOL_DATA_PROVIDER,
+  //     UI_INCENTIVE_DATA_PROVIDER: "0xc0179321f0825c3e0F59Fe7Ca4E40557b97797a3" // pools.AaveV3Optimism.UI_INCENTIVE_DATA_PROVIDER
+  //   },
+  //   explorer: "https://optimistic.etherscan.io/address/{{ADDRESS}}",
+  //   explorerName: "Optimistic Etherscan",
+  //   subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v3-optimism',
+  // },
   {
     v3: true,
     id: "BASE_V3",
@@ -245,144 +250,166 @@ export const markets: AaveMarketDataType[] = [
     chainId: ChainId.base,
     api: `https://base-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
     addresses: {
-      LENDING_POOL_ADDRESS_PROVIDER:
-        pools.AaveV3Base.POOL_ADDRESSES_PROVIDER,
+      LENDING_POOL_ADDRESS_PROVIDER: pools.AaveV3Base.POOL_ADDRESSES_PROVIDER,
       UI_POOL_DATA_PROVIDER: "0xE92cd6164CE7DC68e740765BC1f2a091B6CBc3e4", // pools.AaveV3Base.UI_POOL_DATA_PROVIDER,
-      UI_INCENTIVE_DATA_PROVIDER: "0x5c5228aC8BC1528482514aF3e27E692495148717" // pools.AaveV3Base.UI_INCENTIVE_DATA_PROVIDER
+      UI_INCENTIVE_DATA_PROVIDER: "0x5c5228aC8BC1528482514aF3e27E692495148717", // pools.AaveV3Base.UI_INCENTIVE_DATA_PROVIDER
     },
     explorer: "https://basescan.org/address/{{ADDRESS}}",
     explorerName: "BaseScan",
-    subgraphUrl: "" // Not set up yet
+    subgraphUrl: "", // Not set up yet
   },
-  {
-    v3: false,
-    id: "POLYGON_V2",
-    title: "Polygon v2",
-    chainId: ChainId.polygon,
-    api: `https://polygon-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
-    addresses: {
-      LENDING_POOL_ADDRESS_PROVIDER:
-        pools.AaveV2Polygon.POOL_ADDRESSES_PROVIDER,
-      UI_POOL_DATA_PROVIDER: pools.AaveV2Polygon.UI_POOL_DATA_PROVIDER,
-      UI_INCENTIVE_DATA_PROVIDER: pools.AaveV2Polygon.UI_INCENTIVE_DATA_PROVIDER
-    },
-    explorer: "https://polygonscan.com/address/{{ADDRESS}}",
-    explorerName: "PolygonScan",
-    subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/aave-v2-matic',
-  },
-  {
-    v3: true,
-    id: "POLYGON_V3",
-    title: "Polygon v3",
-    chainId: ChainId.polygon,
-    api: `https://polygon-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
-    addresses: {
-      LENDING_POOL_ADDRESS_PROVIDER:
-        pools.AaveV3Polygon.POOL_ADDRESSES_PROVIDER,
-      UI_POOL_DATA_PROVIDER: "0xE92cd6164CE7DC68e740765BC1f2a091B6CBc3e4", // pools.AaveV3Polygon.UI_POOL_DATA_PROVIDER,
-      UI_INCENTIVE_DATA_PROVIDER: "0x5c5228aC8BC1528482514aF3e27E692495148717" // pools.AaveV3Polygon.UI_INCENTIVE_DATA_PROVIDER
-    },
-    explorer: "https://polygonscan.com/address/{{ADDRESS}}",
-    explorerName: "PolygonScan",
-    subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v3-polygon',
-  },
-  {
-    v3: false,
-    id: "AVALANCHE_V2",
-    title: "Avalanche v2",
-    chainId: ChainId.avalanche,
-    api: `https://avax-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
-    addresses: {
-      LENDING_POOL_ADDRESS_PROVIDER:
-        pools.AaveV2Avalanche.POOL_ADDRESSES_PROVIDER,
-      UI_POOL_DATA_PROVIDER: pools.AaveV2Avalanche.UI_POOL_DATA_PROVIDER,
-      UI_INCENTIVE_DATA_PROVIDER: pools.AaveV2Avalanche.UI_INCENTIVE_DATA_PROVIDER
-    },
-    explorer: "https://avascan.info/blockchain/all/address/{{ADDRESS}}",
-    explorerName: "AvaScan",
-    subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v2-avalanche',
-  },
-  {
-    v3: true,
-    id: "AVALANCHE_V3",
-    title: "Avalanche v3",
-    chainId: ChainId.avalanche,
-    api: `https://avax-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
-    addresses: {
-      LENDING_POOL_ADDRESS_PROVIDER:
-        pools.AaveV3Avalanche.POOL_ADDRESSES_PROVIDER,
-      UI_POOL_DATA_PROVIDER: "0x374a2592f0265b3bb802d75809e61b1b5BbD85B7", // pools.AaveV3Avalanche.UI_POOL_DATA_PROVIDER,
-      UI_INCENTIVE_DATA_PROVIDER: "0xC81CCebEA6A14bA007b96C0a1600D0bA0Df383a8" // pools.AaveV3Avalanche.UI_INCENTIVE_DATA_PROVIDER
-    },
-    explorer: "https://avascan.info/blockchain/all/address/{{ADDRESS}}",
-    explorerName: "AvaScan",
-    subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v3-avalanche',
-  },
-  /*
-  {
-    v3: true,
-    id: "METIS_V3",
-    title: "Metis v3",
-    chainId: ChainId.metis_andromeda,
-    api: `https://metis-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
-    addresses: {
-      LENDING_POOL_ADDRESS_PROVIDER: pools.AaveV3Metis.POOL_ADDRESSES_PROVIDER,
-      UI_POOL_DATA_PROVIDER: "0x5d4D4007A4c6336550DdAa2a7c0d5e7972eebd16", // pools.AaveV3Metis.UI_POOL_DATA_PROVIDER,
-      UI_INCENTIVE_DATA_PROVIDER: "0xE28E2c8d240dd5eBd0adcab86fbD79df7a052034", // pools.AaveV3Metis.UI_INCENTIVE_DATA_PROVIDER
-    },
-    explorer: "https://andromeda-explorer.metis.io/address/{{ADDRESS}}",
-    explorerName: "Metis Explorer",
-    subgraphUrl: 'https://andromeda.thegraph.metis.io/subgraphs/name/aave/protocol-v3-metis',
-  },
-  */
-  {
-    v3: true,
-    id: "GNOSIS_V3",
-    title: "Gnosis v3",
-    chainId: ChainId.xdai,
-    api: `https://gnosis-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
-    addresses: {
-      LENDING_POOL_ADDRESS_PROVIDER: pools.AaveV3Gnosis.POOL_ADDRESSES_PROVIDER,
-      UI_POOL_DATA_PROVIDER: pools.AaveV3Gnosis.UI_POOL_DATA_PROVIDER,
-      UI_INCENTIVE_DATA_PROVIDER: pools.AaveV3Gnosis.UI_INCENTIVE_DATA_PROVIDER
-    },
-    explorer: "https://gnosisscan.io/address/{{ADDRESS}}",
-    explorerName: "Gnosis Scan",
-    subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v3-gnosis',
-  },
-  /*
-  {
-    v3: true,
-    id: "SCROLL_V3",
-    title: "Scroll v3",
-    chainId: ChainId.scroll,
-    api: "https://scroll-mainnet.rpc.grove.city/v1/10ccb305",
-    addresses: {
-      LENDING_POOL_ADDRESS_PROVIDER: pools.AaveV3Scroll.POOL_ADDRESSES_PROVIDER,
-      UI_POOL_DATA_PROVIDER: pools.AaveV3Scroll.UI_POOL_DATA_PROVIDER,
-      UI_INCENTIVE_DATA_PROVIDER: pools.AaveV3Scroll.UI_INCENTIVE_DATA_PROVIDER
-    },
-    explorer: "https://scrollscan.com/address/{{ADDRESS}}",
-    explorerName: "Scroll Scan",
-    subgraphUrl: "",
-  },
-  */
-  {
-    v3: true,
-    id: "BNB_V3",
-    title: "BNB Chain v3",
-    chainId: ChainId.bnb,
-    api: `https://bnb-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
-    addresses: {
-      LENDING_POOL_ADDRESS_PROVIDER: pools.AaveV3BNB.POOL_ADDRESSES_PROVIDER,
-      UI_POOL_DATA_PROVIDER: "0xb12e82DF057BF16ecFa89D7D089dc7E5C1Dc057B", // pools.AaveV3BNB.UI_POOL_DATA_PROVIDER,
-      UI_INCENTIVE_DATA_PROVIDER: "0x86b0521f92a554057e54B93098BA2A6Aaa2F4ACB" // pools.AaveV3BNB.UI_INCENTIVE_DATA_PROVIDER
-    },
-    explorer: "https://bscscan.com/address/{{ADDRESS}}",
-    explorerName: "BSC Scan",
-    subgraphUrl: "",
-  }
+  // {
+  //   v3: false,
+  //   id: "POLYGON_V2",
+  //   title: "Polygon v2",
+  //   chainId: ChainId.polygon,
+  //   api: `https://polygon-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
+  //   addresses: {
+  //     LENDING_POOL_ADDRESS_PROVIDER:
+  //       pools.AaveV2Polygon.POOL_ADDRESSES_PROVIDER,
+  //     UI_POOL_DATA_PROVIDER: pools.AaveV2Polygon.UI_POOL_DATA_PROVIDER,
+  //     UI_INCENTIVE_DATA_PROVIDER: pools.AaveV2Polygon.UI_INCENTIVE_DATA_PROVIDER
+  //   },
+  //   explorer: "https://polygonscan.com/address/{{ADDRESS}}",
+  //   explorerName: "PolygonScan",
+  //   subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/aave-v2-matic',
+  // },
+  // {
+  //   v3: true,
+  //   id: "POLYGON_V3",
+  //   title: "Polygon v3",
+  //   chainId: ChainId.polygon,
+  //   api: `https://polygon-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
+  //   addresses: {
+  //     LENDING_POOL_ADDRESS_PROVIDER:
+  //       pools.AaveV3Polygon.POOL_ADDRESSES_PROVIDER,
+  //     UI_POOL_DATA_PROVIDER: "0xE92cd6164CE7DC68e740765BC1f2a091B6CBc3e4", // pools.AaveV3Polygon.UI_POOL_DATA_PROVIDER,
+  //     UI_INCENTIVE_DATA_PROVIDER: "0x5c5228aC8BC1528482514aF3e27E692495148717" // pools.AaveV3Polygon.UI_INCENTIVE_DATA_PROVIDER
+  //   },
+  //   explorer: "https://polygonscan.com/address/{{ADDRESS}}",
+  //   explorerName: "PolygonScan",
+  //   subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v3-polygon',
+  // },
+  // {
+  //   v3: false,
+  //   id: "AVALANCHE_V2",
+  //   title: "Avalanche v2",
+  //   chainId: ChainId.avalanche,
+  //   api: `https://avax-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
+  //   addresses: {
+  //     LENDING_POOL_ADDRESS_PROVIDER:
+  //       pools.AaveV2Avalanche.POOL_ADDRESSES_PROVIDER,
+  //     UI_POOL_DATA_PROVIDER: pools.AaveV2Avalanche.UI_POOL_DATA_PROVIDER,
+  //     UI_INCENTIVE_DATA_PROVIDER: pools.AaveV2Avalanche.UI_INCENTIVE_DATA_PROVIDER
+  //   },
+  //   explorer: "https://avascan.info/blockchain/all/address/{{ADDRESS}}",
+  //   explorerName: "AvaScan",
+  //   subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v2-avalanche',
+  // },
+  // {
+  //   v3: true,
+  //   id: "AVALANCHE_V3",
+  //   title: "Avalanche v3",
+  //   chainId: ChainId.avalanche,
+  //   api: `https://avax-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
+  //   addresses: {
+  //     LENDING_POOL_ADDRESS_PROVIDER:
+  //       pools.AaveV3Avalanche.POOL_ADDRESSES_PROVIDER,
+  //     UI_POOL_DATA_PROVIDER: "0x374a2592f0265b3bb802d75809e61b1b5BbD85B7", // pools.AaveV3Avalanche.UI_POOL_DATA_PROVIDER,
+  //     UI_INCENTIVE_DATA_PROVIDER: "0xC81CCebEA6A14bA007b96C0a1600D0bA0Df383a8" // pools.AaveV3Avalanche.UI_INCENTIVE_DATA_PROVIDER
+  //   },
+  //   explorer: "https://avascan.info/blockchain/all/address/{{ADDRESS}}",
+  //   explorerName: "AvaScan",
+  //   subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v3-avalanche',
+  // },
+  // /*
+  // {
+  //   v3: true,
+  //   id: "METIS_V3",
+  //   title: "Metis v3",
+  //   chainId: ChainId.metis_andromeda,
+  //   api: `https://metis-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
+  //   addresses: {
+  //     LENDING_POOL_ADDRESS_PROVIDER: pools.AaveV3Metis.POOL_ADDRESSES_PROVIDER,
+  //     UI_POOL_DATA_PROVIDER: "0x5d4D4007A4c6336550DdAa2a7c0d5e7972eebd16", // pools.AaveV3Metis.UI_POOL_DATA_PROVIDER,
+  //     UI_INCENTIVE_DATA_PROVIDER: "0xE28E2c8d240dd5eBd0adcab86fbD79df7a052034", // pools.AaveV3Metis.UI_INCENTIVE_DATA_PROVIDER
+  //   },
+  //   explorer: "https://andromeda-explorer.metis.io/address/{{ADDRESS}}",
+  //   explorerName: "Metis Explorer",
+  //   subgraphUrl: 'https://andromeda.thegraph.metis.io/subgraphs/name/aave/protocol-v3-metis',
+  // },
+  // */
+  // {
+  //   v3: true,
+  //   id: "GNOSIS_V3",
+  //   title: "Gnosis v3",
+  //   chainId: ChainId.xdai,
+  //   api: `https://gnosis-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
+  //   addresses: {
+  //     LENDING_POOL_ADDRESS_PROVIDER: pools.AaveV3Gnosis.POOL_ADDRESSES_PROVIDER,
+  //     UI_POOL_DATA_PROVIDER: pools.AaveV3Gnosis.UI_POOL_DATA_PROVIDER,
+  //     UI_INCENTIVE_DATA_PROVIDER: pools.AaveV3Gnosis.UI_INCENTIVE_DATA_PROVIDER
+  //   },
+  //   explorer: "https://gnosisscan.io/address/{{ADDRESS}}",
+  //   explorerName: "Gnosis Scan",
+  //   subgraphUrl: 'https://api.thegraph.com/subgraphs/name/aave/protocol-v3-gnosis',
+  // },
+  // /*
+  // {
+  //   v3: true,
+  //   id: "SCROLL_V3",
+  //   title: "Scroll v3",
+  //   chainId: ChainId.scroll,
+  //   api: "https://scroll-mainnet.rpc.grove.city/v1/10ccb305",
+  //   addresses: {
+  //     LENDING_POOL_ADDRESS_PROVIDER: pools.AaveV3Scroll.POOL_ADDRESSES_PROVIDER,
+  //     UI_POOL_DATA_PROVIDER: pools.AaveV3Scroll.UI_POOL_DATA_PROVIDER,
+  //     UI_INCENTIVE_DATA_PROVIDER: pools.AaveV3Scroll.UI_INCENTIVE_DATA_PROVIDER
+  //   },
+  //   explorer: "https://scrollscan.com/address/{{ADDRESS}}",
+  //   explorerName: "Scroll Scan",
+  //   subgraphUrl: "",
+  // },
+  // */
+  // {
+  //   v3: true,
+  //   id: "BNB_V3",
+  //   title: "BNB Chain v3",
+  //   chainId: ChainId.bnb,
+  //   api: `https://bnb-mainnet.g.alchemy.com/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`,
+  //   addresses: {
+  //     LENDING_POOL_ADDRESS_PROVIDER: pools.AaveV3BNB.POOL_ADDRESSES_PROVIDER,
+  //     UI_POOL_DATA_PROVIDER: "0xb12e82DF057BF16ecFa89D7D089dc7E5C1Dc057B", // pools.AaveV3BNB.UI_POOL_DATA_PROVIDER,
+  //     UI_INCENTIVE_DATA_PROVIDER: "0x86b0521f92a554057e54B93098BA2A6Aaa2F4ACB" // pools.AaveV3BNB.UI_INCENTIVE_DATA_PROVIDER
+  //   },
+  //   explorer: "https://bscscan.com/address/{{ADDRESS}}",
+  //   explorerName: "BSC Scan",
+  //   subgraphUrl: "",
+  // }
 ];
+
+/** Swap fee in basis points (25 bps = 0.25%) */
+export const SWAP_FEE_BPS = 25;
+/** Execution fee in basis points (5 bps = 0.05%) */
+export const EXECUTION_FEE_BPS = 5;
+/** Slippage (1.5%) applied to amount received after fees */
+export const SWAP_SLIPPAGE_PCT = 0.015;
+
+export function getSwapFeeBreakdown(swapUsd: number) {
+  const swapFeeUsd = swapUsd * (SWAP_FEE_BPS / 10000);
+  const executionFeeUsd = swapUsd * (EXECUTION_FEE_BPS / 10000);
+  const totalFeeUsd = swapFeeUsd + executionFeeUsd;
+  const receiveUsdAfterFees = swapUsd - totalFeeUsd;
+  const slippageUsd = receiveUsdAfterFees * SWAP_SLIPPAGE_PCT;
+  const receiveUsd = receiveUsdAfterFees - slippageUsd;
+  return {
+    swapFeeUsd,
+    executionFeeUsd,
+    totalFeeUsd,
+    slippageUsd,
+    receiveUsd,
+  };
+}
 
 /** hook to fetch user aave data
  * @returns { currentAddress,
@@ -398,17 +425,20 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
   const [isFetching, setIsFetching] = useState(false);
   const store = useHookstate(HealthFactorDataStore);
   const state = store.get({ noproxy: true });
-  const { currentAddress, addressData, currentMarket } = state;
+  const { currentAddress, addressData, currentMarket, isRefreshActive } = state;
   const data = addressData?.[currentAddress];
   const addressProvided: boolean = !!(address && address?.length > 0);
-  if (address?.length === 0 || address === "DEBUG") address = currentAddress || "";
+  if (address?.length === 0 || address === "DEBUG")
+    address = currentAddress || "";
 
   const isLoadingAny = !!markets.find(
-    (market) => data?.[market.id]?.isFetching === true
+    (market) => data?.[market.id]?.isFetching === true,
   );
 
-  const deps = [currentAddress, addressProvided, isLoadingAny];
+  const fetchDeps = [currentAddress, addressProvided, isLoadingAny];
+  const refreshDeps = [addressProvided, isRefreshActive, address];
 
+  // Initial fetch for markets that don't have data yet
   useEffect(() => {
     if (preventFetch) return;
     if (addressProvided && !isLoadingAny) {
@@ -451,10 +481,29 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
         };
 
         fetchData();
-
       });
     }
-  }, deps);
+  }, fetchDeps);
+
+  // Refresh interval: only runs when isRefreshActive is true; shared so checkbox and interval stay in sync
+  useEffect(() => {
+    if (!preventFetch && addressProvided && isRefreshActive) {
+      const intervalId = setInterval(() => {
+        if (!store.get({ noproxy: true }).isRefreshActive) return;
+
+        markets.forEach((market) => {
+          const fetchData = async () => {
+            console.log("refreshing data: ", isRefreshActive);
+            const hfData: HealthFactorData = await getAaveData(address, market);
+            store.addressData.nested(address).merge({ [market.id]: hfData });
+          };
+          fetchData();
+        });
+      }, 60000);
+      return () => clearInterval(intervalId);
+    }
+    return undefined;
+  }, refreshDeps);
 
   useEffect(() => {
     if (address) store.currentAddress.set(address);
@@ -471,6 +520,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
   // one does, select the market that has a position (prefer highest reserve balance).
   useEffect(() => {
     if (!isFetching && addressProvided) {
+      // console.log("currentMarket: ", currentMarket);
       const currentMarketHasPosition =
         data?.[currentMarket].workingData?.healthFactor &&
         (data?.[currentMarket]?.workingData?.healthFactor ?? -1) > -1;
@@ -502,13 +552,13 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
         .find(
           (market) =>
             data?.[market.id]?.workingData?.healthFactor &&
-            (data?.[market.id]?.workingData?.healthFactor ?? -1) > -1
+            (data?.[market.id]?.workingData?.healthFactor ?? -1) > -1,
         );
       // This guard doesn't make much sense but for some reason this useEffect was being triggered
       // sometimes even when the markets hadn't just finished loading. We only want to apply
       // this logic right after loading.
       const didFetchRecently = !!markets.find(
-        (market) => data?.[market.id]?.lastFetched > Date.now() - 1000
+        (market) => data?.[market.id]?.lastFetched > Date.now() - 1000,
       );
       if (marketWithPosition && didFetchRecently) {
         setCurrentMarket(marketWithPosition.id);
@@ -534,7 +584,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
 
   const addBorrowAsset = (symbol: string) => {
     const asset = data[currentMarket].availableAssets?.find(
-      (a) => a.symbol === symbol
+      (a) => a.symbol === symbol,
     ) as AssetDetails;
 
     asset.isNewlyAddedBySimUser = true;
@@ -544,7 +594,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
       totalBorrows: 0,
       totalBorrowsUSD: 0,
       totalBorrowsMarketReferenceCurrency: 0,
-      stableBorrowAPY: 0
+      stableBorrowAPY: 0,
     };
 
     const workingData = store.addressData.nested(address)?.[currentMarket]
@@ -555,7 +605,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
 
   const addReserveAsset = (symbol: string) => {
     const asset: AssetDetails = data[currentMarket].availableAssets?.find(
-      (a) => a.symbol === symbol
+      (a) => a.symbol === symbol,
     ) as AssetDetails;
 
     asset.isNewlyAddedBySimUser = true;
@@ -605,9 +655,9 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
         JSON.stringify(
           store.addressData[currentAddress][currentMarket].fetchedData.get({
             noproxy: true,
-          })
-        )
-      )
+          }),
+        ),
+      ),
     );
     updateAllDerivedHealthFactorData();
   };
@@ -616,7 +666,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     const workingData = store.addressData.nested(address)[currentMarket]
       .workingData as State<AaveHealthFactorData>;
     const item = workingData?.userBorrowsData.find(
-      (item) => item.asset.symbol.get() === symbol
+      (item) => item.asset.symbol.get() === symbol,
     );
     if (item?.totalBorrows.get() !== quantity) {
       item?.totalBorrows.set(quantity);
@@ -628,7 +678,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     const workingData = store.addressData.nested(address)[currentMarket]
       .workingData as State<AaveHealthFactorData>;
     const item = workingData?.userReservesData.find(
-      (item) => item.asset.symbol.get() === symbol
+      (item) => item.asset.symbol.get() === symbol,
     );
 
     if (item?.underlyingBalance.get() !== quantity) {
@@ -641,13 +691,13 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     const workingData = store.addressData.nested(address)[currentMarket]
       .workingData as State<AaveHealthFactorData>;
     const reserveItem = workingData?.userReservesData.find(
-      (item) => item.asset.symbol.get() === symbol
+      (item) => item.asset.symbol.get() === symbol,
     );
     if (reserveItem && reserveItem?.asset.priceInUSD.get() !== price)
       reserveItem.asset.priceInUSD.set(price);
 
     const borrowItem = workingData?.userBorrowsData.find(
-      (item) => item.asset.symbol.get() === symbol
+      (item) => item.asset.symbol.get() === symbol,
     );
     if (borrowItem && borrowItem?.asset.priceInUSD.get() !== price)
       borrowItem.asset.priceInUSD.set(price);
@@ -655,17 +705,18 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
   };
 
   const setTxHistory = (address: string, history: TxHistory) => {
-    const workingData = store.addressData.nested(address)?.[currentMarket]?.workingData as State<AaveHealthFactorData>;
+    const workingData = store.addressData.nested(address)?.[currentMarket]
+      ?.workingData as State<AaveHealthFactorData>;
     if (workingData) workingData.txHistory?.set(history);
   };
 
   const applyLiquidationScenario = () => {
     const liquidationScenario = getCalculatedLiquidationScenario(
       data?.[currentMarket]?.workingData as AaveHealthFactorData,
-      data?.[currentMarket]?.marketReferenceCurrencyPriceInUSD
+      data?.[currentMarket]?.marketReferenceCurrencyPriceInUSD,
     ) as AssetDetails[];
     liquidationScenario?.forEach((asset) =>
-      setAssetPriceInUSD(asset.symbol, asset.priceInUSD)
+      setAssetPriceInUSD(asset.symbol, asset.priceInUSD),
     );
   };
 
@@ -673,7 +724,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     const workingData = store.addressData.nested(address)[currentMarket]
       .workingData as State<AaveHealthFactorData>;
     const reserveItem = workingData?.userReservesData.find(
-      (item) => item.asset.symbol.get() === symbol
+      (item) => item.asset.symbol.get() === symbol,
     );
     if (
       reserveItem &&
@@ -704,10 +755,120 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     const updatedWorkingData: AaveHealthFactorData =
       updateDerivedHealthFactorData(
         workingData,
-        currentMarketReferenceCurrencyPriceInUSD
+        currentMarketReferenceCurrencyPriceInUSD,
       );
 
     healthFactorItem.workingData.set(updatedWorkingData);
+  };
+
+  const setRefreshState = () => {
+    store.isRefreshActive.set(!store.isRefreshActive.get());
+  };
+
+  const setRefreshActive = (value: boolean) => {
+    store.isRefreshActive.set(value);
+  };
+
+  const swapFeeMultiplier =
+    (1 - (SWAP_FEE_BPS + EXECUTION_FEE_BPS) / 10000) *
+    (1 - SWAP_SLIPPAGE_PCT);
+
+  /**
+   * Simulate swapping a percentage of debt from one borrowed asset to another
+   * (e.g. USDC → cbBTC). A 25 bps swap fee + 5 bps execution fee is applied to the amount received. Turns off auto-refresh.
+   * @param sourceSymbol e.g. "USDC"
+   * @param targetSymbol e.g. "cbBTC"
+   * @param percentage 0.25 | 0.5 | 0.75 | 1 (25%, 50%, 75%, 100%)
+   */
+  const simulateSwapDebt = (
+    sourceSymbol: string,
+    targetSymbol: string,
+    percentage: number,
+  ) => {
+    store.isRefreshActive.set(false);
+    const borrows =
+      data?.[currentMarket]?.workingData?.userBorrowsData ?? [];
+    const sourceItem = borrows.find(
+      (b) => b.asset.symbol === sourceSymbol,
+    );
+    if (
+      !sourceItem ||
+      sourceItem.totalBorrows <= 0 ||
+      sourceSymbol === targetSymbol
+    ) {
+      return;
+    }
+    const swapUsd =
+      sourceItem.totalBorrows * sourceItem.asset.priceInUSD * percentage;
+    const availableAssets =
+      data?.[currentMarket]?.availableAssets ?? [];
+    const targetAsset = availableAssets.find(
+      (a) => a.symbol === targetSymbol,
+    );
+    if (!targetAsset || !isBorrowableAsset(targetAsset)) {
+      return;
+    }
+    const targetPrice = targetAsset.priceInUSD || 1;
+    const targetQuantity = (swapUsd * swapFeeMultiplier) / targetPrice;
+    const targetExisting = borrows.find(
+      (b) => b.asset.symbol === targetSymbol,
+    );
+    const existingTargetQty = targetExisting ? targetExisting.totalBorrows : 0;
+    if (!targetExisting) {
+      addBorrowAsset(targetSymbol);
+    }
+    const newSourceQty = sourceItem.totalBorrows * (1 - percentage);
+    setBorrowedAssetQuantity(sourceSymbol, newSourceQty);
+    setBorrowedAssetQuantity(targetSymbol, existingTargetQty + targetQuantity);
+  };
+
+  /**
+   * Simulate swapping a percentage of collateral from one supplied asset to another.
+   * A 25 bps swap fee + 5 bps execution fee is applied to the amount received. Turns off auto-refresh.
+   * @param sourceSymbol e.g. "WETH"
+   * @param targetSymbol e.g. "cbBTC"
+   * @param percentage 0.25 | 0.5 | 0.75 | 1 (25%, 50%, 75%, 100%)
+   */
+  const simulateSwapCollateral = (
+    sourceSymbol: string,
+    targetSymbol: string,
+    percentage: number,
+  ) => {
+    store.isRefreshActive.set(false);
+    const reserves =
+      data?.[currentMarket]?.workingData?.userReservesData ?? [];
+    const sourceItem = reserves.find(
+      (r) => r.asset.symbol === sourceSymbol,
+    );
+    if (
+      !sourceItem ||
+      sourceItem.underlyingBalance <= 0 ||
+      sourceSymbol === targetSymbol
+    ) {
+      return;
+    }
+    const swapUsd =
+      sourceItem.underlyingBalance * sourceItem.asset.priceInUSD * percentage;
+    const availableAssets =
+      data?.[currentMarket]?.availableAssets ?? [];
+    const targetAsset = availableAssets.find(
+      (a) => a.symbol === targetSymbol,
+    );
+    if (!targetAsset || !isSuppliableAsset(targetAsset)) {
+      return;
+    }
+    const targetPrice = targetAsset.priceInUSD || 1;
+    const targetQuantity = (swapUsd * swapFeeMultiplier) / targetPrice;
+    const targetExisting = reserves.find(
+      (r) => r.asset.symbol === targetSymbol,
+    );
+    const existingTargetQty = targetExisting ? targetExisting.underlyingBalance : 0;
+    if (!targetExisting) {
+      addReserveAsset(targetSymbol);
+    }
+    const newSourceQty = sourceItem.underlyingBalance * (1 - percentage);
+    setReserveAssetQuantity(sourceSymbol, newSourceQty);
+    setReserveAssetQuantity(targetSymbol, existingTargetQty + targetQuantity);
   };
 
   //console.log({ data })
@@ -729,7 +890,12 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     setAssetPriceInUSD,
     applyLiquidationScenario,
     setUseReserveAssetAsCollateral,
-    setTxHistory
+    setTxHistory,
+    setRefreshState,
+    setRefreshActive,
+    isRefreshActive,
+    simulateSwapDebt,
+    simulateSwapCollateral,
   };
 }
 
@@ -746,14 +912,36 @@ export const getHealthFactorColor = (hf: number = 0) => {
 export const isStablecoinAsset = (asset: AssetDetails) => {
   const stablecoinSymbols = [
     // Major USD stablecoins used in Aave
-    "DAI", "USDC", "USDT", "TUSD", "USDP", "BUSD", "FRAX", "LUSD", "SUSD", "GUSD", "USDD", "DUSD",
+    "DAI",
+    "USDC",
+    "USDT",
+    "TUSD",
+    "USDP",
+    "BUSD",
+    "FRAX",
+    "LUSD",
+    "SUSD",
+    "GUSD",
+    "USDD",
+    "DUSD",
     // Aave-specific stablecoins
-    "GHO", "USD", "EUR", "MAI", "USDE", "SUSDE", "EUSDE",
+    "GHO",
+    "USD",
+    "EUR",
+    "MAI",
+    "USDE",
+    "SUSDE",
+    "EUSDE",
     // Euro stablecoins used in Aave
-    "EURT", "EURS", "AGEUR", "PAR"
+    "EURT",
+    "EURS",
+    "AGEUR",
+    "PAR",
   ];
-  
-  return !!stablecoinSymbols.find(symbol => asset.symbol?.toUpperCase().includes(symbol));
+
+  return !!stablecoinSymbols.find((symbol) =>
+    asset.symbol?.toUpperCase().includes(symbol),
+  );
 };
 
 export const isActiveAsset = (asset: AssetDetails) => {
@@ -773,16 +961,18 @@ export const isFlashloanableAsset = (asset: AssetDetails) => {
 };
 
 export const getEligibleLiquidationScenarioReserves = (
-  hfData: AaveHealthFactorData
+  hfData: AaveHealthFactorData,
 ) => {
   const MINIMUM_CUMULATIVE_RESERVE_USD = 50;
   const MINIMUM_CUMULATIVE_RESERVE_PCT = 5;
 
   // Check if there are any borrowed assets that are not stablecoins
   // If so, exclude liquidation scenario entirely
-  const hasNonStablecoinBorrows = hfData.userBorrowsData.some((borrowItem: BorrowedAssetDataItem) => {
-    return !isStablecoinAsset(borrowItem.asset);
-  });
+  const hasNonStablecoinBorrows = hfData.userBorrowsData.some(
+    (borrowItem: BorrowedAssetDataItem) => {
+      return !isStablecoinAsset(borrowItem.asset);
+    },
+  );
 
   if (hasNonStablecoinBorrows) {
     return [];
@@ -824,7 +1014,7 @@ export const getEligibleLiquidationScenarioReserves = (
       (borrowItem: BorrowedAssetDataItem) =>
         !eligibleReserves.find((reserveItem: ReserveAssetDataItem) => {
           return reserveItem.asset.symbol === borrowItem.asset.symbol;
-        })
+        }),
     );
 
   return hasDifferentBorrowedAsset ? eligibleReserves : [];
@@ -859,14 +1049,14 @@ export const getEligibleLiquidationScenarioReserves = (
  */
 export const updateDerivedHealthFactorData = (
   data: AaveHealthFactorData,
-  currentMarketReferenceCurrencyPriceInUSD: number
+  currentMarketReferenceCurrencyPriceInUSD: number,
 ) => {
   let updatedCurrentLiquidationThreshold: BigNumber = new BigNumber(0);
   let updatedCurrentLoanToValue: BigNumber = new BigNumber(0);
   let updatedHealthFactor: BigNumber = new BigNumber(0);
   let updatedAvailableBorrowsUSD: BigNumber = new BigNumber(0);
   let updatedAvailableBorrowsMarketReferenceCurrency: BigNumber = new BigNumber(
-    0
+    0,
   );
   let updatedTotalBorrowsUSD: BigNumber = new BigNumber(0);
 
@@ -877,20 +1067,20 @@ export const updateDerivedHealthFactorData = (
 
   data.userReservesData.forEach((reserveItem) => {
     const underlyingBalance: BigNumber = new BigNumber(
-      reserveItem.underlyingBalance
+      reserveItem.underlyingBalance,
     );
     const priceInUSD: BigNumber = new BigNumber(reserveItem.asset.priceInUSD);
 
     // Update reserveItem.priceInMarketReferenceCurrency
     const existingPriceInMarketReferenceCurrency = new BigNumber(
-      reserveItem.asset.priceInMarketReferenceCurrency
+      reserveItem.asset.priceInMarketReferenceCurrency,
     );
     const updatedMarketReferenceCurrency = priceInUSD.dividedBy(
-      currentMarketReferenceCurrencyPriceInUSD
+      currentMarketReferenceCurrencyPriceInUSD,
     );
     if (
       !existingPriceInMarketReferenceCurrency.isEqualTo(
-        updatedMarketReferenceCurrency
+        updatedMarketReferenceCurrency,
       )
     ) {
       reserveItem.asset.priceInMarketReferenceCurrency =
@@ -904,7 +1094,7 @@ export const updateDerivedHealthFactorData = (
       updatedMarketReferenceCurrency.multipliedBy(underlyingBalance);
     if (
       !existingUnderlyingBalanceMarketReferenceCurrency.isEqualTo(
-        updatedUnderlyingBalanceMarketReferenceCurrency
+        updatedUnderlyingBalanceMarketReferenceCurrency,
       )
     ) {
       reserveItem.underlyingBalanceMarketReferenceCurrency =
@@ -913,7 +1103,7 @@ export const updateDerivedHealthFactorData = (
 
     // Update reserveItem.underlyingBalanceUSD
     const existingUnderlyingBalanceUSD = new BigNumber(
-      reserveItem.underlyingBalanceUSD
+      reserveItem.underlyingBalanceUSD,
     );
     const updatedUnderlyingBalanceUSD =
       underlyingBalance.multipliedBy(priceInUSD);
@@ -924,30 +1114,36 @@ export const updateDerivedHealthFactorData = (
     // Update the necessary accumulated values for updating healthFactor etc.
     if (reserveItem.usageAsCollateralEnabledOnUser) {
       updatedCollateral = updatedCollateral.plus(
-        updatedUnderlyingBalanceMarketReferenceCurrency
+        updatedUnderlyingBalanceMarketReferenceCurrency,
       );
 
-      const isEmode: boolean = !!reserveItem.asset.eModeCategoryId && (reserveItem.asset.eModeCategoryId === data.userEmodeCategoryId);
+      const isEmode: boolean =
+        !!reserveItem.asset.eModeCategoryId &&
+        reserveItem.asset.eModeCategoryId === data.userEmodeCategoryId;
       const lt: number = isEmode
         ? reserveItem.asset.eModeLiquidationThreshold || 0
-        : reserveItem.asset.reserveLiquidationThreshold || 0
+        : reserveItem.asset.reserveLiquidationThreshold || 0;
 
       const ltv: number = isEmode
         ? reserveItem.asset.eModeLtv || 0
-        : reserveItem.asset.baseLTVasCollateral || 0
+        : reserveItem.asset.baseLTVasCollateral || 0;
 
-      const itemReserveLiquidationThreshold: BigNumber = new BigNumber(lt).dividedBy(10000);
-      const itemBaseLoanToValue: BigNumber = new BigNumber(ltv).dividedBy(10000);
+      const itemReserveLiquidationThreshold: BigNumber = new BigNumber(
+        lt,
+      ).dividedBy(10000);
+      const itemBaseLoanToValue: BigNumber = new BigNumber(ltv).dividedBy(
+        10000,
+      );
 
       weightedReservesETH = weightedReservesETH.plus(
         itemReserveLiquidationThreshold.multipliedBy(
-          updatedUnderlyingBalanceMarketReferenceCurrency
-        )
+          updatedUnderlyingBalanceMarketReferenceCurrency,
+        ),
       );
       weightedLTVETH = weightedLTVETH.plus(
         itemBaseLoanToValue.multipliedBy(
-          updatedUnderlyingBalanceMarketReferenceCurrency
-        )
+          updatedUnderlyingBalanceMarketReferenceCurrency,
+        ),
       );
     }
   });
@@ -958,14 +1154,14 @@ export const updateDerivedHealthFactorData = (
 
     // Update borrowItem.priceInMarketReferenceCurrency
     const existingPriceInMarketReferenceCurrency = new BigNumber(
-      borrowItem.asset.priceInMarketReferenceCurrency
+      borrowItem.asset.priceInMarketReferenceCurrency,
     );
     const updatedMarketReferenceCurrency = priceInUSD.dividedBy(
-      currentMarketReferenceCurrencyPriceInUSD
+      currentMarketReferenceCurrencyPriceInUSD,
     );
     if (
       !existingPriceInMarketReferenceCurrency.isEqualTo(
-        updatedMarketReferenceCurrency
+        updatedMarketReferenceCurrency,
       )
     ) {
       borrowItem.asset.priceInMarketReferenceCurrency =
@@ -979,7 +1175,7 @@ export const updateDerivedHealthFactorData = (
       updatedMarketReferenceCurrency.multipliedBy(totalBorrows);
     if (
       !existingTotalBorrowsMarketReferenceCurrency.isEqualTo(
-        updatedTotalBorrowsMarketReferenceCurrency
+        updatedTotalBorrowsMarketReferenceCurrency,
       )
     ) {
       borrowItem.totalBorrowsMarketReferenceCurrency =
@@ -995,14 +1191,14 @@ export const updateDerivedHealthFactorData = (
 
     // Update the necessary accumulated values for updating healthFactor etc.
     totalBorrowsETH = totalBorrowsETH.plus(
-      updatedTotalBorrowsMarketReferenceCurrency
+      updatedTotalBorrowsMarketReferenceCurrency,
     );
   });
 
   // Update "totalCollateralMarketReferenceCurrency"
   if (
     !updatedCollateral.isEqualTo(
-      new BigNumber(data.totalCollateralMarketReferenceCurrency)
+      new BigNumber(data.totalCollateralMarketReferenceCurrency),
     )
   ) {
     data.totalCollateralMarketReferenceCurrency = updatedCollateral.toNumber();
@@ -1011,7 +1207,7 @@ export const updateDerivedHealthFactorData = (
   // Update "totalBorrowsMarketReferenceCurrency"
   if (
     !totalBorrowsETH.isEqualTo(
-      new BigNumber(data.totalBorrowsMarketReferenceCurrency)
+      new BigNumber(data.totalBorrowsMarketReferenceCurrency),
     )
   ) {
     data.totalBorrowsMarketReferenceCurrency = totalBorrowsETH.toNumber();
@@ -1028,7 +1224,7 @@ export const updateDerivedHealthFactorData = (
 
   if (
     !updatedCurrentLiquidationThreshold.isEqualTo(
-      new BigNumber(data.currentLiquidationThreshold)
+      new BigNumber(data.currentLiquidationThreshold),
     )
   ) {
     data.currentLiquidationThreshold =
@@ -1068,7 +1264,7 @@ export const updateDerivedHealthFactorData = (
     .minus(totalBorrowsETH);
   updatedAvailableBorrowsUSD =
     updatedAvailableBorrowsMarketReferenceCurrency.multipliedBy(
-      currentMarketReferenceCurrencyPriceInUSD
+      currentMarketReferenceCurrencyPriceInUSD,
     );
 
   if (updatedAvailableBorrowsUSD.isLessThan(0))
@@ -1076,7 +1272,7 @@ export const updateDerivedHealthFactorData = (
 
   if (
     !updatedAvailableBorrowsUSD.isEqualTo(
-      new BigNumber(data.availableBorrowsUSD)
+      new BigNumber(data.availableBorrowsUSD),
     )
   ) {
     data.availableBorrowsUSD = updatedAvailableBorrowsUSD.toNumber();
@@ -1084,7 +1280,7 @@ export const updateDerivedHealthFactorData = (
 
   // Update "totalBorrowsUSD"
   updatedTotalBorrowsUSD = totalBorrowsETH.multipliedBy(
-    currentMarketReferenceCurrencyPriceInUSD
+    currentMarketReferenceCurrencyPriceInUSD,
   );
 
   if (!updatedTotalBorrowsUSD.isEqualTo(new BigNumber(data.totalBorrowsUSD))) {
@@ -1105,7 +1301,7 @@ export const updateDerivedHealthFactorData = (
  */
 export const getCalculatedLiquidationScenario = (
   hfData: AaveHealthFactorData,
-  currentMarketReferenceCurrencyPriceInUSD: number
+  currentMarketReferenceCurrencyPriceInUSD: number,
 ) => {
   if (!hfData) return [];
   // deep clone to avoid mutating state
@@ -1115,7 +1311,7 @@ export const getCalculatedLiquidationScenario = (
     getEligibleLiquidationScenarioReserves(hfData);
 
   let assets: AssetDetails[] = reserves.map(
-    (res: ReserveAssetDataItem) => res.asset
+    (res: ReserveAssetDataItem) => res.asset,
   );
 
   let hf: number = hfData?.healthFactor || -1;
@@ -1152,21 +1348,21 @@ export const getCalculatedLiquidationScenario = (
       asset.priceInUSD = asset.priceInUSD + priceIncrement;
 
       const reserveItemAsset = hfData.userReservesData.find(
-        (item) => item.asset.symbol === asset.symbol
+        (item) => item.asset.symbol === asset.symbol,
       );
 
       if (reserveItemAsset)
         reserveItemAsset.asset.priceInUSD = asset.priceInUSD;
 
       const borrowItemAsset = hfData.userBorrowsData.find(
-        (item) => item.asset.symbol === asset.symbol
+        (item) => item.asset.symbol === asset.symbol,
       );
 
       if (borrowItemAsset) borrowItemAsset.asset.priceInUSD = asset.priceInUSD;
 
       const updatedWorkingData = updateDerivedHealthFactorData(
         hfData,
-        currentMarketReferenceCurrencyPriceInUSD
+        currentMarketReferenceCurrencyPriceInUSD,
       );
 
       hf = updatedWorkingData.healthFactor;
@@ -1196,8 +1392,8 @@ export const getCalculatedLiquidationScenario = (
           0.01,
           Math.min(
             asset.priceInUSD * ((hf - HF_LIMIT) * 0.45),
-            asset.priceInUSD * 0.5
-          )
+            asset.priceInUSD * 0.5,
+          ),
         );
 
       priceDecrement =
@@ -1219,21 +1415,21 @@ export const getCalculatedLiquidationScenario = (
       }
 
       const reserveItemAsset = hfData.userReservesData.find(
-        (item) => item.asset.symbol === asset.symbol
+        (item) => item.asset.symbol === asset.symbol,
       );
 
       if (reserveItemAsset)
         reserveItemAsset.asset.priceInUSD = asset.priceInUSD;
 
       const borrowItemAsset = hfData.userBorrowsData.find(
-        (item) => item.asset.symbol === asset.symbol
+        (item) => item.asset.symbol === asset.symbol,
       );
 
       if (borrowItemAsset) borrowItemAsset.asset.priceInUSD = asset.priceInUSD;
 
       const updatedWorkingData = updateDerivedHealthFactorData(
         hfData,
-        currentMarketReferenceCurrencyPriceInUSD
+        currentMarketReferenceCurrencyPriceInUSD,
       );
 
       if (updatedWorkingData.healthFactor < 1.0) {
@@ -1252,21 +1448,21 @@ export const getCalculatedLiquidationScenario = (
 
 export const getIconNameFromAssetSymbol = (assetSymbol: string) => {
   if (!assetSymbol) return "";
-  
+
   let iconName = assetSymbol.toLowerCase();
-  
+
   // Handle special PT (Principal Token) cases
   if (iconName.includes("pt-")) {
     // Extract the base token from PT tokens
     // e.g., "PT-eUSDE-14AUG2025" -> "eusde"
-    // e.g., "PT-sUSDE-25SEP2025" -> "susde" 
+    // e.g., "PT-sUSDE-25SEP2025" -> "susde"
     // e.g., "PT-USDe-31JUL2025" -> "usde"
     const ptMatch = iconName.match(/pt-(.+?)-/);
     if (ptMatch) {
       iconName = ptMatch[1];
     }
   }
-  
+
   // Handle Ethereal/Ethena tokens
   if (iconName.includes("ethereal") || iconName.includes("ethena")) {
     // Extract the base token from the long name
@@ -1277,20 +1473,22 @@ export const getIconNameFromAssetSymbol = (assetSymbol: string) => {
       iconName = etherealMatch[1];
     }
   }
-  
+
   // Apply standard transformations
   iconName = iconName
     .replace(".e", "")
     .replace(".b", "")
     .replace("m.", "")
     .replace("btcb", "btc");
-  
+
   return iconName;
 };
 
 export const getIconNameFromMarket = (market?: AaveMarketDataType) => {
-  return market?.id
-    ?.split("_")[0]
-    .replace("BNB", "binance") // special case... follow aave interface convention
-    .toLowerCase() || "";
+  return (
+    market?.id
+      ?.split("_")[0]
+      .replace("BNB", "binance") // special case... follow aave interface convention
+      .toLowerCase() || ""
+  );
 };
