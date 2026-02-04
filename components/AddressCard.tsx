@@ -75,7 +75,7 @@ import BorrowedAssetDetailsDialog from "./BorrowedAssetDetailsDialog";
 
 type Props = {};
 
-const AddressCard = ({}: Props) => {
+const AddressCard = ({ }: Props) => {
   const { addressData, currentMarket, applyLiquidationScenario, isFetching } =
     useAaveData("");
   const data = addressData?.[currentMarket] as HealthFactorData;
@@ -160,7 +160,7 @@ export const HealthFactorAddressSummary = ({
     (market) => addressData?.[market.id]?.fetchedData?.healthFactor > -1,
   ).length;
 
-  const market: AaveMarketDataType = markets.find(
+  const market: AaveMarketDataType | undefined = markets.find(
     (mkts) => mkts.id === currentMarket,
   );
   const isEmode: boolean =
@@ -366,7 +366,7 @@ const HealthFactorSummary = ({
   const healthFactorDiffers: boolean =
     addressHasPosition &&
     data.workingData?.healthFactor?.toFixed(2) !==
-      data.fetchedData?.healthFactor?.toFixed(2);
+    data.fetchedData?.healthFactor?.toFixed(2);
 
   const originalTotalBorrowsUSD: number =
     data.fetchedData?.totalBorrowsUSD ?? 0;
@@ -374,7 +374,7 @@ const HealthFactorSummary = ({
   const totalBorrowsDiffers: boolean =
     addressHasPosition &&
     data.fetchedData?.totalBorrowsUSD?.toFixed(2) !==
-      data.workingData?.totalBorrowsUSD?.toFixed(2);
+    data.workingData?.totalBorrowsUSD?.toFixed(2);
 
   const originalAvailableBorrowsUSD: number = Math.max(
     data.fetchedData?.availableBorrowsUSD ?? 0,
@@ -389,7 +389,7 @@ const HealthFactorSummary = ({
   const availableBorrowsDiffers: boolean =
     addressHasPosition &&
     data.fetchedData?.availableBorrowsUSD?.toFixed(2) !==
-      data.workingData?.availableBorrowsUSD?.toFixed(2);
+    data.workingData?.availableBorrowsUSD?.toFixed(2);
 
   const originalTotalCollateralUSD: number =
     data.fetchedData?.userReservesData.reduce(
@@ -417,9 +417,9 @@ const HealthFactorSummary = ({
     (
       originalTotalCollateralUSD - (data.fetchedData?.totalBorrowsUSD ?? 0)
     ).toFixed(2) !==
-      (totalCollateralUSD - (data.workingData?.totalBorrowsUSD ?? 0)).toFixed(
-        2,
-      );
+    (totalCollateralUSD - (data.workingData?.totalBorrowsUSD ?? 0)).toFixed(
+      2,
+    );
 
   return (
     <div ref={summaryRef} style={{ position: "sticky", top: "0", zIndex: "5" }}>
@@ -702,13 +702,13 @@ const ExtendedPositionDetails = ({ data }: ExtendedPositionDetailsProps) => {
   const originalWorkingLTV = Math.min(
     100,
     (100 * (data.fetchedData?.totalBorrowsMarketReferenceCurrency || 1)) /
-      (data.fetchedData?.totalCollateralMarketReferenceCurrency || 1),
+    (data.fetchedData?.totalCollateralMarketReferenceCurrency || 1),
   );
 
   const currentWorkingLTV = Math.min(
     100,
     (100 * (data.workingData?.totalBorrowsMarketReferenceCurrency || 1)) /
-      (data.workingData?.totalCollateralMarketReferenceCurrency || 1),
+    (data.workingData?.totalCollateralMarketReferenceCurrency || 1),
   );
 
   const originalWorkingLTVDisplayable = origHasBorrows
@@ -1094,7 +1094,7 @@ const LiquidationScenario = ({
   );
 };
 
-const ResetMarketButton = ({}) => {
+const ResetMarketButton = ({ }) => {
   const { addressData, currentMarket, resetCurrentMarketChanges } =
     useAaveData("");
   const data = addressData?.[currentMarket];
@@ -1543,9 +1543,9 @@ const UserAssetUseAsCollateralToggle = ({
   const handleSetUseReserveAssetAsCollateral = () => {
     setUseReserveAssetAsCollateral !== undefined
       ? setUseReserveAssetAsCollateral(
-          assetSymbol,
-          !usageAsCollateralEnabledOnUser,
-        )
+        assetSymbol,
+        !usageAsCollateralEnabledOnUser,
+      )
       : null;
   };
 
