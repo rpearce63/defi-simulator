@@ -392,23 +392,76 @@ export const markets: AaveMarketDataType[] = [
 export const SWAP_FEE_BPS = 25;
 /** Execution fee in basis points (5 bps = 0.05%) */
 export const EXECUTION_FEE_BPS = 5;
-/** Slippage (1.5%) applied to amount received after fees */
-export const SWAP_SLIPPAGE_PCT = 0.015;
+/** Default slippage (1.5% = 150 bps) when dynamic slippage is not available */
+export const DEFAULT_SLIPPAGE_BPS = 150;
+export const SWAP_SLIPPAGE_PCT = DEFAULT_SLIPPAGE_BPS / 10000;
 
-export function getSwapFeeBreakdown(swapUsd: number) {
+const SWAP_FEE_MULTIPLIER =
+  (1 - (SWAP_FEE_BPS + EXECUTION_FEE_BPS) / 10000) * (1 - SWAP_SLIPPAGE_PCT);
+
+const COW_BFF_BASE = "https://bff.cow.fi";
+
+/**
+ * Fetch recommended slippage tolerance (in basis points) from CoW Protocol BFF for a token pair.
+ * Used by Aave for swap/repay simulations. Returns null on failure (use DEFAULT_SLIPPAGE_BPS).
+ * @see https://bff.cow.fi/{chainId}/markets/{tokenA}-{tokenB}/slippageTolerance
+ */
+export async function fetchSlippageToleranceBps(
+  chainId: number,
+  tokenA: string,
+  tokenB: string,
+): Promise<number | null> {
+  const a = tokenA.toLowerCase();
+  const b = tokenB.toLowerCase();
+  const marketSlug = `${a}-${b}`;
+  try {
+    const res = await fetch(
+      `${COW_BFF_BASE}/${chainId}/markets/${marketSlug}/slippageTolerance`,
+    );
+    if (!res.ok) return null;
+    const json = (await res.json()) as { slippageBps?: number };
+    return typeof json.slippageBps === "number" ? json.slippageBps : null;
+  } catch {
+    return null;
+  }
+}
+
+function getSwapFeeMultiplierForSlippageBps(slippageBps: number) {
+  return (
+    (1 - (SWAP_FEE_BPS + EXECUTION_FEE_BPS) / 10000) *
+    (1 - slippageBps / 10000)
+  );
+}
+
+export function getSwapFeeBreakdown(
+  swapUsd: number,
+  slippageBps?: number | null,
+) {
+  const bps = slippageBps ?? DEFAULT_SLIPPAGE_BPS;
   const swapFeeUsd = swapUsd * (SWAP_FEE_BPS / 10000);
   const executionFeeUsd = swapUsd * (EXECUTION_FEE_BPS / 10000);
   const totalFeeUsd = swapFeeUsd + executionFeeUsd;
   const receiveUsdAfterFees = swapUsd - totalFeeUsd;
-  const slippageUsd = receiveUsdAfterFees * SWAP_SLIPPAGE_PCT;
+  const slippageUsd = receiveUsdAfterFees * (bps / 10000);
   const receiveUsd = receiveUsdAfterFees - slippageUsd;
   return {
     swapFeeUsd,
     executionFeeUsd,
     totalFeeUsd,
     slippageUsd,
+    slippageBps: bps,
     receiveUsd,
   };
+}
+
+/** Collateral value (USD) needed so that after fees/slippage you receive receiveUsd. */
+export function getCollateralUsdNeededForRepay(
+  receiveUsd: number,
+  slippageBps?: number | null,
+) {
+  const bps = slippageBps ?? DEFAULT_SLIPPAGE_BPS;
+  const mult = getSwapFeeMultiplierForSlippageBps(bps);
+  return receiveUsd / mult;
 }
 
 /** hook to fetch user aave data
@@ -485,20 +538,75 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     }
   }, fetchDeps);
 
-  // Refresh interval: only runs when isRefreshActive is true; shared so checkbox and interval stay in sync
+  // Apply fresh API data while preserving in-progress simulations: update prices and derived values only.
+  const applyRefreshPreservingWorkingData = (
+    marketId: string,
+    freshHfData: HealthFactorData,
+  ) => {
+    const marketRefPrice = freshHfData.marketReferenceCurrencyPriceInUSD;
+    const marketEntry = store.addressData.nested(address)[marketId];
+    marketEntry.fetchedData.set(freshHfData.fetchedData);
+    marketEntry.marketReferenceCurrencyPriceInUSD.set(marketRefPrice);
+    marketEntry.availableAssets.set(freshHfData.availableAssets ?? []);
+    marketEntry.lastFetched.set(freshHfData.lastFetched);
+    marketEntry.fetchError.set(freshHfData.fetchError ?? "");
+    marketEntry.isFetching.set(false);
+    const existing = store.addressData.nested(address)[marketId].get({
+      noproxy: true,
+    }) as HealthFactorData;
+    const existingWorking = existing?.workingData;
+    if (!existingWorking) {
+      store.addressData.nested(address)[marketId].workingData.set(
+        freshHfData.workingData ?? freshHfData.fetchedData!,
+      );
+      return;
+    }
+    const freshBySymbol: Record<string, AssetDetails> = {};
+    (freshHfData.availableAssets ?? []).forEach((a) => {
+      freshBySymbol[a.symbol] = a;
+    });
+    const workingCopy = JSON.parse(
+      JSON.stringify(existingWorking),
+    ) as AaveHealthFactorData;
+    workingCopy.userReservesData?.forEach((item) => {
+      const freshAsset = freshBySymbol[item.asset.symbol];
+      if (freshAsset) {
+        item.asset = { ...freshAsset, isNewlyAddedBySimUser: item.asset.isNewlyAddedBySimUser };
+      }
+    });
+    workingCopy.userBorrowsData?.forEach((item) => {
+      const freshAsset = freshBySymbol[item.asset.symbol];
+      if (freshAsset) {
+        item.asset = { ...freshAsset, isNewlyAddedBySimUser: item.asset.isNewlyAddedBySimUser };
+      }
+    });
+    const updatedWorking = updateDerivedHealthFactorData(
+      workingCopy,
+      marketRefPrice,
+    );
+    (updatedWorking as AaveHealthFactorData & { liquidationScenario?: AssetDetails[] }).liquidationScenario =
+      getCalculatedLiquidationScenario(updatedWorking, marketRefPrice);
+    store.addressData.nested(address)[marketId].workingData.set(updatedWorking);
+  };
+
+  // Refresh interval: only runs when isRefreshActive is true; shared so checkbox and interval stay in sync.
+  // When refresh is turned back on, run an immediate refresh so values are up to date without waiting for the interval.
+  // Refresh updates prices and calculations but preserves in-progress simulations (workingData).
   useEffect(() => {
     if (!preventFetch && addressProvided && isRefreshActive) {
-      const intervalId = setInterval(() => {
-        if (!store.get({ noproxy: true }).isRefreshActive) return;
-
+      const runRefresh = () => {
         markets.forEach((market) => {
           const fetchData = async () => {
-            console.log("refreshing data: ", isRefreshActive);
             const hfData: HealthFactorData = await getAaveData(address, market);
-            store.addressData.nested(address).merge({ [market.id]: hfData });
+            applyRefreshPreservingWorkingData(market.id, hfData);
           };
           fetchData();
         });
+      };
+      runRefresh();
+      const intervalId = setInterval(() => {
+        if (!store.get({ noproxy: true }).isRefreshActive) return;
+        runRefresh();
       }, 60000);
       return () => clearInterval(intervalId);
     }
@@ -770,23 +878,20 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     store.isRefreshActive.set(value);
   };
 
-  const swapFeeMultiplier =
-    (1 - (SWAP_FEE_BPS + EXECUTION_FEE_BPS) / 10000) *
-    (1 - SWAP_SLIPPAGE_PCT);
-
   /**
    * Simulate swapping a percentage of debt from one borrowed asset to another
-   * (e.g. USDC → cbBTC). A 25 bps swap fee + 5 bps execution fee is applied to the amount received. Turns off auto-refresh.
-   * @param sourceSymbol e.g. "USDC"
-   * @param targetSymbol e.g. "cbBTC"
-   * @param percentage 0.25 | 0.5 | 0.75 | 1 (25%, 50%, 75%, 100%)
+   * (e.g. USDC → cbBTC). Fees and optional slippage (bps) applied. Turns off auto-refresh.
+   * @param slippageBps optional; from CoW BFF or use default (150 bps)
    */
   const simulateSwapDebt = (
     sourceSymbol: string,
     targetSymbol: string,
     percentage: number,
+    slippageBps?: number | null,
   ) => {
-    store.isRefreshActive.set(false);
+    const mult = getSwapFeeMultiplierForSlippageBps(
+      slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+    );
     const borrows =
       data?.[currentMarket]?.workingData?.userBorrowsData ?? [];
     const sourceItem = borrows.find(
@@ -810,7 +915,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
       return;
     }
     const targetPrice = targetAsset.priceInUSD || 1;
-    const targetQuantity = (swapUsd * swapFeeMultiplier) / targetPrice;
+    const targetQuantity = (swapUsd * mult) / targetPrice;
     const targetExisting = borrows.find(
       (b) => b.asset.symbol === targetSymbol,
     );
@@ -825,17 +930,17 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
 
   /**
    * Simulate swapping a percentage of collateral from one supplied asset to another.
-   * A 25 bps swap fee + 5 bps execution fee is applied to the amount received. Turns off auto-refresh.
-   * @param sourceSymbol e.g. "WETH"
-   * @param targetSymbol e.g. "cbBTC"
-   * @param percentage 0.25 | 0.5 | 0.75 | 1 (25%, 50%, 75%, 100%)
+   * Fees and optional slippage (bps) applied. Turns off auto-refresh.
    */
   const simulateSwapCollateral = (
     sourceSymbol: string,
     targetSymbol: string,
     percentage: number,
+    slippageBps?: number | null,
   ) => {
-    store.isRefreshActive.set(false);
+    const mult = getSwapFeeMultiplierForSlippageBps(
+      slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+    );
     const reserves =
       data?.[currentMarket]?.workingData?.userReservesData ?? [];
     const sourceItem = reserves.find(
@@ -859,7 +964,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
       return;
     }
     const targetPrice = targetAsset.priceInUSD || 1;
-    const targetQuantity = (swapUsd * swapFeeMultiplier) / targetPrice;
+    const targetQuantity = (swapUsd * mult) / targetPrice;
     const targetExisting = reserves.find(
       (r) => r.asset.symbol === targetSymbol,
     );
@@ -870,6 +975,225 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     const newSourceQty = sourceItem.underlyingBalance * (1 - percentage);
     setReserveAssetQuantity(sourceSymbol, newSourceQty);
     setReserveAssetQuantity(targetSymbol, existingTargetQty + targetQuantity);
+  };
+
+  /**
+   * Simulate repaying debt: either by a manual amount (in debt asset units) or by
+   * "selling" a percentage of collateral (same fee + slippage as swaps). Turns off auto-refresh.
+   */
+  const simulateRepayDebt = (params: {
+    debtSymbol: string;
+    mode: "manual" | "collateral";
+    manualAmount?: number;
+    collateralSymbol?: string;
+    percentage?: number;
+    /** When using collateral, optional fixed amount of debt to repay (in debt asset units). If set, overrides percentage. */
+    collateralRepayAmount?: number;
+    slippageBps?: number | null;
+  }) => {
+    const borrows =
+      data?.[currentMarket]?.workingData?.userBorrowsData ?? [];
+    const debtItem = borrows.find((b) => b.asset.symbol === params.debtSymbol);
+    if (!debtItem || debtItem.totalBorrows <= 0) return;
+
+    if (params.mode === "manual" && params.manualAmount != null) {
+      const amount = Math.max(0, params.manualAmount);
+      const newQty = Math.max(0, debtItem.totalBorrows - amount);
+      setBorrowedAssetQuantity(params.debtSymbol, newQty);
+      return;
+    }
+
+    if (
+      params.mode === "collateral" &&
+      params.collateralSymbol != null &&
+      (params.percentage != null || (params.collateralRepayAmount != null && params.collateralRepayAmount > 0))
+    ) {
+      const mult = getSwapFeeMultiplierForSlippageBps(
+        params.slippageBps ?? DEFAULT_SLIPPAGE_BPS,
+      );
+      const reserves =
+        data?.[currentMarket]?.workingData?.userReservesData ?? [];
+      const collateralItem = reserves.find(
+        (r) => r.asset.symbol === params.collateralSymbol,
+      );
+      const debtReduceUnitsTarget =
+        params.collateralRepayAmount != null && params.collateralRepayAmount > 0
+          ? Math.min(params.collateralRepayAmount, debtItem.totalBorrows)
+          : (params.percentage ?? 0) * debtItem.totalBorrows;
+      if (!collateralItem || collateralItem.underlyingBalance <= 0 || debtReduceUnitsTarget <= 0) {
+        return;
+      }
+      const debtPrice = debtItem.asset.priceInUSD || 1;
+      const debtReduceUsdTarget = debtReduceUnitsTarget * debtPrice;
+      const collateralUsdNeeded = debtReduceUsdTarget / mult;
+      const collateralPrice = collateralItem.asset.priceInUSD || 1;
+      const collateralUnitsNeeded = collateralUsdNeeded / collateralPrice;
+      const actualCollateralUnitsUsed = Math.min(
+        collateralUnitsNeeded,
+        collateralItem.underlyingBalance,
+      );
+      const actualReceiveUsd =
+        actualCollateralUnitsUsed * collateralPrice * mult;
+      const actualDebtReduceUnits = Math.min(
+        actualReceiveUsd / debtPrice,
+        debtItem.totalBorrows,
+      );
+      const newCollateralQty = Math.max(
+        0,
+        collateralItem.underlyingBalance - actualCollateralUnitsUsed,
+      );
+      const newDebtQty = Math.max(0, debtItem.totalBorrows - actualDebtReduceUnits);
+      setReserveAssetQuantity(params.collateralSymbol!, newCollateralQty);
+      setBorrowedAssetQuantity(params.debtSymbol, newDebtQty);
+    }
+  };
+
+  /** Projected health factor after swap debt (no state change). */
+  const getProjectedHealthFactorAfterSwapDebt = (
+    sourceSymbol: string,
+    targetSymbol: string,
+    percentage: number,
+    slippageBps?: number | null,
+  ): number | null => {
+    const marketData = data?.[currentMarket];
+    const workingData = marketData?.workingData as AaveHealthFactorData | undefined;
+    const availableAssets = marketData?.availableAssets ?? [];
+    const marketRefPrice = marketData?.marketReferenceCurrencyPriceInUSD ?? 1;
+    if (!workingData || !workingData.userBorrowsData) return null;
+    const borrows = workingData.userBorrowsData;
+    const sourceItem = borrows.find((b) => b.asset.symbol === sourceSymbol);
+    if (!sourceItem || sourceItem.totalBorrows <= 0 || sourceSymbol === targetSymbol) return null;
+    const mult = getSwapFeeMultiplierForSlippageBps(slippageBps ?? DEFAULT_SLIPPAGE_BPS);
+    const swapUsd = sourceItem.totalBorrows * sourceItem.asset.priceInUSD * percentage;
+    const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
+    if (!targetAsset || !isBorrowableAsset(targetAsset)) return null;
+    const targetPrice = targetAsset.priceInUSD || 1;
+    const targetQuantity = (swapUsd * mult) / targetPrice;
+    const targetExisting = borrows.find((b) => b.asset.symbol === targetSymbol);
+    const existingTargetQty = targetExisting ? targetExisting.totalBorrows : 0;
+    const clone = JSON.parse(JSON.stringify(workingData)) as AaveHealthFactorData;
+    const cloneBorrows = clone.userBorrowsData;
+    const cloneSource = cloneBorrows.find((b) => b.asset.symbol === sourceSymbol)!;
+    cloneSource.totalBorrows = sourceItem.totalBorrows * (1 - percentage);
+    const cloneTarget = cloneBorrows.find((b) => b.asset.symbol === targetSymbol);
+    if (cloneTarget) {
+      cloneTarget.totalBorrows = existingTargetQty + targetQuantity;
+    } else {
+      cloneBorrows.push({
+        asset: { ...targetAsset, isNewlyAddedBySimUser: true },
+        totalBorrows: existingTargetQty + targetQuantity,
+        totalBorrowsUSD: 0,
+        totalBorrowsMarketReferenceCurrency: 0,
+        stableBorrowAPY: targetAsset.stableBorrowAPY ?? 0,
+      });
+    }
+    const updated = updateDerivedHealthFactorData(clone, marketRefPrice);
+    return updated.healthFactor ?? null;
+  };
+
+  /** Projected health factor after swap collateral (no state change). */
+  const getProjectedHealthFactorAfterSwapCollateral = (
+    sourceSymbol: string,
+    targetSymbol: string,
+    percentage: number,
+    slippageBps?: number | null,
+  ): number | null => {
+    const marketData = data?.[currentMarket];
+    const workingData = marketData?.workingData as AaveHealthFactorData | undefined;
+    const availableAssets = marketData?.availableAssets ?? [];
+    const marketRefPrice = marketData?.marketReferenceCurrencyPriceInUSD ?? 1;
+    if (!workingData || !workingData.userReservesData) return null;
+    const reserves = workingData.userReservesData;
+    const sourceItem = reserves.find((r) => r.asset.symbol === sourceSymbol);
+    if (!sourceItem || sourceItem.underlyingBalance <= 0 || sourceSymbol === targetSymbol) return null;
+    const mult = getSwapFeeMultiplierForSlippageBps(slippageBps ?? DEFAULT_SLIPPAGE_BPS);
+    const swapUsd = sourceItem.underlyingBalance * sourceItem.asset.priceInUSD * percentage;
+    const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
+    if (!targetAsset || !isSuppliableAsset(targetAsset)) return null;
+    const targetPrice = targetAsset.priceInUSD || 1;
+    const targetQuantity = (swapUsd * mult) / targetPrice;
+    const targetExisting = reserves.find((r) => r.asset.symbol === targetSymbol);
+    const existingTargetQty = targetExisting ? targetExisting.underlyingBalance : 0;
+    const clone = JSON.parse(JSON.stringify(workingData)) as AaveHealthFactorData;
+    const cloneReserves = clone.userReservesData;
+    const cloneSource = cloneReserves.find((r) => r.asset.symbol === sourceSymbol)!;
+    cloneSource.underlyingBalance = sourceItem.underlyingBalance * (1 - percentage);
+    const cloneTarget = cloneReserves.find((r) => r.asset.symbol === targetSymbol);
+    if (cloneTarget) {
+      cloneTarget.underlyingBalance = existingTargetQty + targetQuantity;
+    } else {
+      cloneReserves.push({
+        asset: { ...targetAsset, isNewlyAddedBySimUser: true },
+        underlyingBalance: existingTargetQty + targetQuantity,
+        underlyingBalanceUSD: 0,
+        underlyingBalanceMarketReferenceCurrency: 0,
+        usageAsCollateralEnabledOnUser: targetAsset.usageAsCollateralEnabled ?? false,
+      });
+    }
+    const updated = updateDerivedHealthFactorData(clone, marketRefPrice);
+    return updated.healthFactor ?? null;
+  };
+
+  /** Projected health factor after repay (no state change). */
+  const getProjectedHealthFactorAfterRepay = (params: {
+    debtSymbol: string;
+    mode: "manual" | "collateral";
+    manualAmount?: number;
+    collateralSymbol?: string;
+    percentage?: number;
+    collateralRepayAmount?: number;
+    slippageBps?: number | null;
+  }): number | null => {
+    const marketData = data?.[currentMarket];
+    const workingData = marketData?.workingData as AaveHealthFactorData | undefined;
+    const marketRefPrice = marketData?.marketReferenceCurrencyPriceInUSD ?? 1;
+    if (!workingData) return null;
+    const borrows = workingData.userBorrowsData ?? [];
+    const debtItem = borrows.find((b) => b.asset.symbol === params.debtSymbol);
+    if (!debtItem || debtItem.totalBorrows <= 0) return null;
+
+    if (params.mode === "manual" && params.manualAmount != null) {
+      const amount = Math.max(0, params.manualAmount);
+      const newQty = Math.max(0, debtItem.totalBorrows - amount);
+      const clone = JSON.parse(JSON.stringify(workingData)) as AaveHealthFactorData;
+      const cloneDebt = clone.userBorrowsData.find((b) => b.asset.symbol === params.debtSymbol)!;
+      cloneDebt.totalBorrows = newQty;
+      const updated = updateDerivedHealthFactorData(clone, marketRefPrice);
+      return updated.healthFactor ?? null;
+    }
+
+    if (
+      params.mode === "collateral" &&
+      params.collateralSymbol != null &&
+      (params.percentage != null || (params.collateralRepayAmount != null && params.collateralRepayAmount > 0))
+    ) {
+      const reserves = workingData.userReservesData ?? [];
+      const collateralItem = reserves.find((r) => r.asset.symbol === params.collateralSymbol);
+      const debtReduceUnitsTarget =
+        params.collateralRepayAmount != null && params.collateralRepayAmount > 0
+          ? Math.min(params.collateralRepayAmount, debtItem.totalBorrows)
+          : (params.percentage ?? 0) * debtItem.totalBorrows;
+      if (!collateralItem || collateralItem.underlyingBalance <= 0 || debtReduceUnitsTarget <= 0) return null;
+      const mult = getSwapFeeMultiplierForSlippageBps(params.slippageBps ?? DEFAULT_SLIPPAGE_BPS);
+      const debtPrice = debtItem.asset.priceInUSD || 1;
+      const debtReduceUsdTarget = debtReduceUnitsTarget * debtPrice;
+      const collateralUsdNeeded = debtReduceUsdTarget / mult;
+      const collateralPrice = collateralItem.asset.priceInUSD || 1;
+      const collateralUnitsNeeded = collateralUsdNeeded / collateralPrice;
+      const actualCollateralUnitsUsed = Math.min(collateralUnitsNeeded, collateralItem.underlyingBalance);
+      const actualReceiveUsd = actualCollateralUnitsUsed * collateralPrice * mult;
+      const actualDebtReduceUnits = Math.min(actualReceiveUsd / debtPrice, debtItem.totalBorrows);
+      const newCollateralQty = Math.max(0, collateralItem.underlyingBalance - actualCollateralUnitsUsed);
+      const newDebtQty = Math.max(0, debtItem.totalBorrows - actualDebtReduceUnits);
+      const clone = JSON.parse(JSON.stringify(workingData)) as AaveHealthFactorData;
+      const cloneDebt = clone.userBorrowsData.find((b) => b.asset.symbol === params.debtSymbol)!;
+      const cloneCollateral = clone.userReservesData.find((r) => r.asset.symbol === params.collateralSymbol)!;
+      cloneDebt.totalBorrows = newDebtQty;
+      cloneCollateral.underlyingBalance = newCollateralQty;
+      const updated = updateDerivedHealthFactorData(clone, marketRefPrice);
+      return updated.healthFactor ?? null;
+    }
+    return null;
   };
 
   //console.log({ data })
@@ -897,6 +1221,10 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     isRefreshActive,
     simulateSwapDebt,
     simulateSwapCollateral,
+    simulateRepayDebt,
+    getProjectedHealthFactorAfterSwapDebt,
+    getProjectedHealthFactorAfterSwapCollateral,
+    getProjectedHealthFactorAfterRepay,
   };
 }
 

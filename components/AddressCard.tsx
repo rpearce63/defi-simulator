@@ -51,6 +51,7 @@ import { ImmutableArray, ImmutableObject } from "@hookstate/core";
 import AddAssetDialog from "./AddAssetDialog";
 import SwapDebtDialog from "./SwapDebtDialog";
 import SwapCollateralDialog from "./SwapCollateralDialog";
+import RepayDebtDialog from "./RepayDebtDialog";
 
 import {
   useAaveData,
@@ -1273,7 +1274,12 @@ const UserBorrowedAssetList = ({
         </Title>
         <Group spacing="xs">
           <AddAssetDialog assetType="BORROW" />
-          {items.length > 0 && <SwapDebtDialog />}
+          {items.length > 0 && (
+            <>
+              <SwapDebtDialog />
+              <RepayDebtDialog />
+            </>
+          )}
         </Group>
       </Container>
       {items.length === 0 && (

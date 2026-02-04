@@ -8,13 +8,15 @@ import {
   Select,
   Text,
   Stack,
-  Alert,
 } from "@mantine/core";
 import {
   useAaveData,
   BorrowedAssetDataItem,
   isBorrowableAsset,
   getSwapFeeBreakdown,
+  fetchSlippageToleranceBps,
+  DEFAULT_SLIPPAGE_BPS,
+  markets,
 } from "../hooks/useAaveData";
 
 const SWAP_PERCENTAGES = [
@@ -29,12 +31,41 @@ export default function SwapDebtDialog() {
   const [sourceSymbol, setSourceSymbol] = React.useState<string | null>(null);
   const [targetSymbol, setTargetSymbol] = React.useState<string | null>(null);
   const [percentage, setPercentage] = React.useState<number>(1);
+  const [slippageBps, setSlippageBps] = React.useState<number | null>(null);
 
   const {
     addressData,
     currentMarket,
     simulateSwapDebt,
+    getProjectedHealthFactorAfterSwapDebt,
   } = useAaveData("");
+
+  const availableAssets = addressData?.[currentMarket]?.availableAssets ?? [];
+  const market = markets.find((m) => m.id === currentMarket);
+
+  React.useEffect(() => {
+    if (!sourceSymbol || !targetSymbol || !market) {
+      setSlippageBps(null);
+      return;
+    }
+    const assetA = availableAssets.find((a) => a.symbol === sourceSymbol);
+    const assetB = availableAssets.find((a) => a.symbol === targetSymbol);
+    if (!assetA?.underlyingAsset || !assetB?.underlyingAsset) {
+      setSlippageBps(DEFAULT_SLIPPAGE_BPS);
+      return;
+    }
+    let cancelled = false;
+    fetchSlippageToleranceBps(
+      Number(market.chainId),
+      assetA.underlyingAsset,
+      assetB.underlyingAsset,
+    ).then((bps) => {
+      if (!cancelled) setSlippageBps(bps ?? DEFAULT_SLIPPAGE_BPS);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceSymbol, targetSymbol, currentMarket, market?.chainId]);
 
   const borrows: BorrowedAssetDataItem[] =
     addressData?.[currentMarket]?.workingData?.userBorrowsData ?? [];
@@ -45,7 +76,6 @@ export default function SwapDebtDialog() {
       label: `${b.asset.symbol} (${b.totalBorrows.toLocaleString(undefined, { maximumFractionDigits: 6 })})`,
     }));
 
-  const availableAssets = addressData?.[currentMarket]?.availableAssets ?? [];
   const targetOptions = availableAssets
     .filter(
       (a) =>
@@ -58,7 +88,7 @@ export default function SwapDebtDialog() {
 
   const handleApply = () => {
     if (!sourceSymbol || !targetSymbol) return;
-    simulateSwapDebt(sourceSymbol, targetSymbol, percentage);
+    simulateSwapDebt(sourceSymbol, targetSymbol, percentage, slippageBps);
     setOpen(false);
     setSourceSymbol(null);
     setTargetSymbol(null);
@@ -73,11 +103,30 @@ export default function SwapDebtDialog() {
     targetOptions.some((o) => o.value === targetSymbol);
 
   const sourceItem = borrows.find((b) => b.asset.symbol === sourceSymbol);
+  const targetItem = borrows.find((b) => b.asset.symbol === targetSymbol);
+  const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
   const swapUsd =
     sourceItem && sourceSymbol
       ? sourceItem.totalBorrows * sourceItem.asset.priceInUSD * percentage
       : 0;
-  const feeBreakdown = swapUsd > 0 ? getSwapFeeBreakdown(swapUsd) : null;
+  const feeBreakdown =
+    swapUsd > 0 ? getSwapFeeBreakdown(swapUsd, slippageBps) : null;
+  const sourceDebtRemaining =
+    sourceItem && sourceSymbol
+      ? sourceItem.totalBorrows * (1 - percentage)
+      : 0;
+  const targetDebtAfter =
+    feeBreakdown && targetAsset
+      ? (targetItem?.totalBorrows ?? 0) +
+        feeBreakdown.receiveUsd / (targetAsset.priceInUSD || 1)
+      : targetItem?.totalBorrows ?? 0;
+  const currentHF = addressData?.[currentMarket]?.workingData?.healthFactor;
+  const projectedHF =
+    sourceSymbol && targetSymbol && feeBreakdown
+      ? getProjectedHealthFactorAfterSwapDebt(sourceSymbol, targetSymbol, percentage, slippageBps)
+      : null;
+  const formatHF = (hf: number | undefined | null) =>
+    hf == null || hf < 0 ? "—" : hf === Infinity ? "∞" : hf.toFixed(2);
 
   return (
     <>
@@ -97,7 +146,7 @@ export default function SwapDebtDialog() {
         <Stack spacing="md">
           <Text size="sm" color="dimmed">
             <Trans>
-              Simulate swapping part of your debt from one asset to another (e.g. USDC → cbBTC) to see the effect on health factor. Auto-refresh is turned off when you apply.
+              Simulate swapping part of your debt from one asset to another (e.g. USDC → cbBTC) to see the effect on health factor.
             </Trans>
           </Text>
 
@@ -155,7 +204,7 @@ export default function SwapDebtDialog() {
                 <Trans>Execution fee (0.05%)</Trans>: ${feeBreakdown.executionFeeUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
               <Text size="xs" color="dimmed">
-                <Trans>Slippage (1.5%)</Trans>: ${feeBreakdown.slippageUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <Trans>Slippage ({((feeBreakdown.slippageBps ?? DEFAULT_SLIPPAGE_BPS) / 100).toFixed(2)}%)</Trans>: ${feeBreakdown.slippageUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
               <Text size="xs" weight={500} mt="xs">
                 <Trans>Total fees + slippage</Trans>: ${(feeBreakdown.totalFeeUsd + feeBreakdown.slippageUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -163,12 +212,17 @@ export default function SwapDebtDialog() {
               <Text size="xs" weight={500} mt={4}>
                 <Trans>You receive (after fees and slippage)</Trans>: ${feeBreakdown.receiveUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
+              <Text size="xs" weight={500} mt="xs">
+                <Trans>Estimated remaining debt</Trans>: {sourceSymbol} {sourceDebtRemaining.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                {targetSymbol && `, ${targetSymbol} ${targetDebtAfter.toLocaleString(undefined, { maximumFractionDigits: 6 })}`}
+              </Text>
+              {projectedHF != null && (
+                <Text size="xs" weight={500} mt="xs">
+                  <Trans>Expected health factor</Trans>: {formatHF(currentHF)} → {formatHF(projectedHF)}
+                </Text>
+              )}
             </Paper>
           )}
-
-          <Alert color="blue" variant="light">
-            <Trans>Auto-refresh will be turned off when you apply so your simulation is not overwritten. You can turn it back on in the app bar.</Trans>
-          </Alert>
 
           <Group position="right" mt="md">
             <Button variant="default" onClick={() => setOpen(false)}>
