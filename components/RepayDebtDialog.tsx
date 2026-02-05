@@ -143,7 +143,7 @@ export default function RepayDebtDialog() {
   const currentHF = addressData?.[currentMarket]?.workingData?.healthFactor;
   const formatHF = (hf: number | undefined | null) =>
     hf == null || hf < 0 ? "—" : hf === Infinity ? "∞" : hf.toFixed(2);
-  const projectedHFManual =
+  const projectedManual =
     mode === "manual" &&
     debtSymbol &&
     manualAmountNum > 0
@@ -153,7 +153,7 @@ export default function RepayDebtDialog() {
           manualAmount: manualAmountNum,
         })
       : null;
-  const projectedHFCollateral =
+  const projectedCollateral =
     mode === "collateral" &&
     feeBreakdown &&
     debtSymbol &&
@@ -168,6 +168,8 @@ export default function RepayDebtDialog() {
           slippageBps,
         })
       : null;
+  const liquidationScenarioManual = projectedManual?.liquidationScenario ?? [];
+  const liquidationScenarioCollateral = projectedCollateral?.liquidationScenario ?? [];
 
   const handleApply = () => {
     if (!debtSymbol) return;
@@ -268,10 +270,20 @@ export default function RepayDebtDialog() {
                 step={0.01}
                 precision={6}
               />
-              {projectedHFManual != null && (
-                <Text size="sm" weight={500}>
-                  <Trans>Expected health factor</Trans>: {formatHF(currentHF)} → {formatHF(projectedHFManual)}
-                </Text>
+              {projectedManual != null && (
+                <>
+                  <Text size="sm" weight={500}>
+                    <Trans>Expected health factor</Trans>: {formatHF(currentHF)} → {formatHF(projectedManual.healthFactor)}
+                  </Text>
+                  {liquidationScenarioManual.length > 0 && (
+                    <Text size="sm" weight={500} mt={4}>
+                      <Trans>Liquidation trigger (approx.)</Trans>:{" "}
+                      {liquidationScenarioManual
+                        .map((a) => `${a.symbol} $${a.priceInUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+                        .join(", ")}
+                    </Text>
+                  )}
+                </>
               )}
             </>
           )}
@@ -361,9 +373,17 @@ export default function RepayDebtDialog() {
                   <Trans>Estimated remaining collateral</Trans>: {collateralSymbol} {Math.max(0, collateralRemainingAfter).toLocaleString(undefined, { maximumFractionDigits: 6 })}
                 </Text>
               )}
-              {projectedHFCollateral != null && (
+              {projectedCollateral != null && (
                 <Text size="xs" weight={500} mt="xs">
-                  <Trans>Expected health factor</Trans>: {formatHF(currentHF)} → {formatHF(projectedHFCollateral)}
+                  <Trans>Expected health factor</Trans>: {formatHF(currentHF)} → {formatHF(projectedCollateral.healthFactor)}
+                </Text>
+              )}
+              {liquidationScenarioCollateral.length > 0 && (
+                <Text size="xs" weight={500} mt="xs">
+                  <Trans>Liquidation trigger (approx.)</Trans>:{" "}
+                  {liquidationScenarioCollateral
+                    .map((a) => `${a.symbol} $${a.priceInUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+                    .join(", ")}
                 </Text>
               )}
             </Paper>

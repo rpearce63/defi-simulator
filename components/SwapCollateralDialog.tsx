@@ -121,12 +121,13 @@ export default function SwapCollateralDialog() {
         feeBreakdown.receiveUsd / (targetAsset.priceInUSD || 1)
       : targetItem?.underlyingBalance ?? 0;
   const currentHF = addressData?.[currentMarket]?.workingData?.healthFactor;
-  const projectedHF =
+  const projected =
     sourceSymbol && targetSymbol && feeBreakdown
       ? getProjectedHealthFactorAfterSwapCollateral(sourceSymbol, targetSymbol, percentage, slippageBps)
       : null;
   const formatHF = (hf: number | undefined | null) =>
     hf == null || hf < 0 ? "—" : hf === Infinity ? "∞" : hf.toFixed(2);
+  const liquidationScenario = projected?.liquidationScenario ?? [];
 
   return (
     <>
@@ -216,9 +217,17 @@ export default function SwapCollateralDialog() {
                 <Trans>Estimated remaining collateral</Trans>: {sourceSymbol} {sourceCollateralRemaining.toLocaleString(undefined, { maximumFractionDigits: 6 })}
                 {targetSymbol && `, ${targetSymbol} ${targetCollateralAfter.toLocaleString(undefined, { maximumFractionDigits: 6 })}`}
               </Text>
-              {projectedHF != null && (
+              {projected != null && (
                 <Text size="xs" weight={500} mt="xs">
-                  <Trans>Expected health factor</Trans>: {formatHF(currentHF)} → {formatHF(projectedHF)}
+                  <Trans>Expected health factor</Trans>: {formatHF(currentHF)} → {formatHF(projected.healthFactor)}
+                </Text>
+              )}
+              {liquidationScenario.length > 0 && (
+                <Text size="xs" weight={500} mt="xs">
+                  <Trans>Liquidation trigger (approx.)</Trans>:{" "}
+                  {liquidationScenario
+                    .map((a) => `${a.symbol} $${a.priceInUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+                    .join(", ")}
                 </Text>
               )}
             </Paper>

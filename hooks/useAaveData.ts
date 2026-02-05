@@ -1048,25 +1048,28 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     }
   };
 
-  /** Projected health factor after swap debt (no state change). */
+  /** Projected health factor and liquidation scenario after swap debt (no state change). */
   const getProjectedHealthFactorAfterSwapDebt = (
     sourceSymbol: string,
     targetSymbol: string,
     percentage: number,
     slippageBps?: number | null,
-  ): number | null => {
+  ): { healthFactor: number | null; liquidationScenario: AssetDetails[] } => {
     const marketData = data?.[currentMarket];
     const workingData = marketData?.workingData as AaveHealthFactorData | undefined;
     const availableAssets = marketData?.availableAssets ?? [];
     const marketRefPrice = marketData?.marketReferenceCurrencyPriceInUSD ?? 1;
-    if (!workingData || !workingData.userBorrowsData) return null;
+    if (!workingData || !workingData.userBorrowsData)
+      return { healthFactor: null, liquidationScenario: [] };
     const borrows = workingData.userBorrowsData;
     const sourceItem = borrows.find((b) => b.asset.symbol === sourceSymbol);
-    if (!sourceItem || sourceItem.totalBorrows <= 0 || sourceSymbol === targetSymbol) return null;
+    if (!sourceItem || sourceItem.totalBorrows <= 0 || sourceSymbol === targetSymbol)
+      return { healthFactor: null, liquidationScenario: [] };
     const mult = getSwapFeeMultiplierForSlippageBps(slippageBps ?? DEFAULT_SLIPPAGE_BPS);
     const swapUsd = sourceItem.totalBorrows * sourceItem.asset.priceInUSD * percentage;
     const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
-    if (!targetAsset || !isBorrowableAsset(targetAsset)) return null;
+    if (!targetAsset || !isBorrowableAsset(targetAsset))
+      return { healthFactor: null, liquidationScenario: [] };
     const targetPrice = targetAsset.priceInUSD || 1;
     const targetQuantity = (swapUsd * mult) / targetPrice;
     const targetExisting = borrows.find((b) => b.asset.symbol === targetSymbol);
@@ -1088,28 +1091,32 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
       });
     }
     const updated = updateDerivedHealthFactorData(clone, marketRefPrice);
-    return updated.healthFactor ?? null;
+    const liquidationScenario = getCalculatedLiquidationScenario(updated, marketRefPrice) ?? [];
+    return { healthFactor: updated.healthFactor ?? null, liquidationScenario };
   };
 
-  /** Projected health factor after swap collateral (no state change). */
+  /** Projected health factor and liquidation scenario after swap collateral (no state change). */
   const getProjectedHealthFactorAfterSwapCollateral = (
     sourceSymbol: string,
     targetSymbol: string,
     percentage: number,
     slippageBps?: number | null,
-  ): number | null => {
+  ): { healthFactor: number | null; liquidationScenario: AssetDetails[] } => {
     const marketData = data?.[currentMarket];
     const workingData = marketData?.workingData as AaveHealthFactorData | undefined;
     const availableAssets = marketData?.availableAssets ?? [];
     const marketRefPrice = marketData?.marketReferenceCurrencyPriceInUSD ?? 1;
-    if (!workingData || !workingData.userReservesData) return null;
+    if (!workingData || !workingData.userReservesData)
+      return { healthFactor: null, liquidationScenario: [] };
     const reserves = workingData.userReservesData;
     const sourceItem = reserves.find((r) => r.asset.symbol === sourceSymbol);
-    if (!sourceItem || sourceItem.underlyingBalance <= 0 || sourceSymbol === targetSymbol) return null;
+    if (!sourceItem || sourceItem.underlyingBalance <= 0 || sourceSymbol === targetSymbol)
+      return { healthFactor: null, liquidationScenario: [] };
     const mult = getSwapFeeMultiplierForSlippageBps(slippageBps ?? DEFAULT_SLIPPAGE_BPS);
     const swapUsd = sourceItem.underlyingBalance * sourceItem.asset.priceInUSD * percentage;
     const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
-    if (!targetAsset || !isSuppliableAsset(targetAsset)) return null;
+    if (!targetAsset || !isSuppliableAsset(targetAsset))
+      return { healthFactor: null, liquidationScenario: [] };
     const targetPrice = targetAsset.priceInUSD || 1;
     const targetQuantity = (swapUsd * mult) / targetPrice;
     const targetExisting = reserves.find((r) => r.asset.symbol === targetSymbol);
@@ -1131,10 +1138,11 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
       });
     }
     const updated = updateDerivedHealthFactorData(clone, marketRefPrice);
-    return updated.healthFactor ?? null;
+    const liquidationScenario = getCalculatedLiquidationScenario(updated, marketRefPrice) ?? [];
+    return { healthFactor: updated.healthFactor ?? null, liquidationScenario };
   };
 
-  /** Projected health factor after repay (no state change). */
+  /** Projected health factor and liquidation scenario after repay (no state change). */
   const getProjectedHealthFactorAfterRepay = (params: {
     debtSymbol: string;
     mode: "manual" | "collateral";
@@ -1143,14 +1151,14 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     percentage?: number;
     collateralRepayAmount?: number;
     slippageBps?: number | null;
-  }): number | null => {
+  }): { healthFactor: number | null; liquidationScenario: AssetDetails[] } => {
     const marketData = data?.[currentMarket];
     const workingData = marketData?.workingData as AaveHealthFactorData | undefined;
     const marketRefPrice = marketData?.marketReferenceCurrencyPriceInUSD ?? 1;
-    if (!workingData) return null;
+    if (!workingData) return { healthFactor: null, liquidationScenario: [] };
     const borrows = workingData.userBorrowsData ?? [];
     const debtItem = borrows.find((b) => b.asset.symbol === params.debtSymbol);
-    if (!debtItem || debtItem.totalBorrows <= 0) return null;
+    if (!debtItem || debtItem.totalBorrows <= 0) return { healthFactor: null, liquidationScenario: [] };
 
     if (params.mode === "manual" && params.manualAmount != null) {
       const amount = Math.max(0, params.manualAmount);
@@ -1159,7 +1167,8 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
       const cloneDebt = clone.userBorrowsData.find((b) => b.asset.symbol === params.debtSymbol)!;
       cloneDebt.totalBorrows = newQty;
       const updated = updateDerivedHealthFactorData(clone, marketRefPrice);
-      return updated.healthFactor ?? null;
+      const liquidationScenario = getCalculatedLiquidationScenario(updated, marketRefPrice) ?? [];
+      return { healthFactor: updated.healthFactor ?? null, liquidationScenario };
     }
 
     if (
@@ -1173,7 +1182,8 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
         params.collateralRepayAmount != null && params.collateralRepayAmount > 0
           ? Math.min(params.collateralRepayAmount, debtItem.totalBorrows)
           : (params.percentage ?? 0) * debtItem.totalBorrows;
-      if (!collateralItem || collateralItem.underlyingBalance <= 0 || debtReduceUnitsTarget <= 0) return null;
+      if (!collateralItem || collateralItem.underlyingBalance <= 0 || debtReduceUnitsTarget <= 0)
+        return { healthFactor: null, liquidationScenario: [] };
       const mult = getSwapFeeMultiplierForSlippageBps(params.slippageBps ?? DEFAULT_SLIPPAGE_BPS);
       const debtPrice = debtItem.asset.priceInUSD || 1;
       const debtReduceUsdTarget = debtReduceUnitsTarget * debtPrice;
@@ -1191,9 +1201,10 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
       cloneDebt.totalBorrows = newDebtQty;
       cloneCollateral.underlyingBalance = newCollateralQty;
       const updated = updateDerivedHealthFactorData(clone, marketRefPrice);
-      return updated.healthFactor ?? null;
+      const liquidationScenario = getCalculatedLiquidationScenario(updated, marketRefPrice) ?? [];
+      return { healthFactor: updated.healthFactor ?? null, liquidationScenario };
     }
-    return null;
+    return { healthFactor: null, liquidationScenario: [] };
   };
 
   //console.log({ data })
