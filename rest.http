@@ -1,0 +1,58 @@
+POST https://api.morpho.org/graphql 
+Content-Type: application/json
+X-REQUEST-TYPE: GraphQL 
+
+query {
+  userByAddress(
+    chainId: 8453
+    address: "0xa9272dA55f73C9ea79b0F9D39C256B3Ff12A7CB7"
+  ) {
+    address
+    marketPositions {
+      market {
+        uniqueKey
+        collateralAsset {
+          name
+          symbol
+          decimals
+          priceUsd
+          oraclePriceUsd
+        }
+        loanAsset {
+          name
+          symbol
+          decimals
+        }
+      }
+      state {
+        borrowAssets
+        borrowAssetsUsd
+        collateral
+        collateralUsd
+      }
+    }
+    transactions {
+      hash
+      timestamp
+      type
+    }
+  }
+}
+
+
+###
+
+POST https://api.morpho.org/graphql 
+Content-Type: application/json
+X-REQUEST-TYPE: GraphQL 
+
+query VaultPosition() {
+  vaultPosition(
+  userAddress: $userAddress, 
+  vaultAddress: $vaultAddress) {
+    state {
+      assets
+      assetsUsd
+    }
+  }
+}
