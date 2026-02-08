@@ -111,16 +111,15 @@ export default function AppBar() {
           >
             DeFi Simulator
           </Title>
-          <Group onClick={(e) => e.stopPropagation()}>
-            <Checkbox
-              label="Refresh"
-              checked={isRefreshActive}
-              onChange={() =>
-                setRefreshState()
-              }
-            />
-
-          </Group>
+          {currentAddress && (
+            <Group onClick={(e) => e.stopPropagation()} ml="sm">
+              <Checkbox
+                label="Refresh"
+                checked={isRefreshActive}
+                onChange={() => setRefreshState()}
+              />
+            </Group>
+          )}
 
         </Group>
 

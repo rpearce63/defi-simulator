@@ -4,6 +4,7 @@ import {
   Button,
   Group,
   Modal,
+  NumberInput,
   Paper,
   Select,
   Text,
@@ -14,6 +15,7 @@ import {
   ReserveAssetDataItem,
   isSuppliableAsset,
   getSwapFeeBreakdown,
+  getCollateralUsdNeededForRepay,
   fetchSlippageToleranceBps,
   DEFAULT_SLIPPAGE_BPS,
   markets,
@@ -31,6 +33,8 @@ export default function SwapCollateralDialog() {
   const [sourceSymbol, setSourceSymbol] = React.useState<string | null>(null);
   const [targetSymbol, setTargetSymbol] = React.useState<string | null>(null);
   const [percentage, setPercentage] = React.useState<number>(1);
+  const [sourceAmount, setSourceAmount] = React.useState<number | string>("");
+  const [receiveUsdAmount, setReceiveUsdAmount] = React.useState<number | string>("");
   const [slippageBps, setSlippageBps] = React.useState<number | null>(null);
 
   const {
@@ -69,30 +73,79 @@ export default function SwapCollateralDialog() {
 
   const reserves: ReserveAssetDataItem[] =
     addressData?.[currentMarket]?.workingData?.userReservesData ?? [];
-  const sourceOptions = reserves
-    .filter((r) => r.underlyingBalance > 0)
-    .map((r) => ({
-      value: r.asset.symbol,
-      label: `${r.asset.symbol} (${r.underlyingBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })})`,
-    }));
+  const suppliedCollateral = reserves.filter((r) => r.underlyingBalance > 0);
+  const sourceOptions = suppliedCollateral.map((r) => ({
+    value: r.asset.symbol,
+    label: `${r.asset.symbol} (${r.underlyingBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })})`,
+  }));
 
   const targetOptions = availableAssets
     .filter(
-      (a) =>
-        a.symbol !== sourceSymbol && isSuppliableAsset(a),
+      (a) => a.symbol !== sourceSymbol && isSuppliableAsset(a),
     )
     .map((a) => ({
       value: a.symbol,
       label: a.symbol,
     }));
 
+  const sourceItem = reserves.find((r) => r.asset.symbol === sourceSymbol);
+  const targetItem = reserves.find((r) => r.asset.symbol === targetSymbol);
+  const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
+
+  const sourceAmountNum =
+    typeof sourceAmount === "number"
+      ? sourceAmount
+      : parseFloat(String(sourceAmount).trim()) || null;
+  const receiveUsdNum =
+    typeof receiveUsdAmount === "number"
+      ? receiveUsdAmount
+      : parseFloat(String(receiveUsdAmount).trim()) || null;
+  const useSourceAmount = sourceAmountNum != null && sourceAmountNum > 0;
+  const useReceiveUsd = receiveUsdNum != null && receiveUsdNum > 0;
+  const useAmount = useSourceAmount || useReceiveUsd;
+  const maxSwapUsd = sourceItem
+    ? sourceItem.underlyingBalance * (sourceItem.asset.priceInUSD || 1)
+    : 0;
+  // When using receive-USD, user enters desired net USD (after fees). Work backwards to source amount.
+  const requiredSwapUsd =
+    useReceiveUsd && sourceItem && receiveUsdNum != null && receiveUsdNum > 0
+      ? Math.min(
+          getCollateralUsdNeededForRepay(receiveUsdNum, slippageBps),
+          maxSwapUsd
+        )
+      : 0;
+  const sourceUnitsToSwap =
+    sourceItem && sourceSymbol
+      ? useSourceAmount
+        ? Math.min(sourceAmountNum!, sourceItem.underlyingBalance)
+        : useReceiveUsd
+          ? requiredSwapUsd / (sourceItem.asset.priceInUSD || 1)
+          : sourceItem.underlyingBalance * percentage
+      : 0;
+  const swapUsd =
+    sourceItem && sourceSymbol
+      ? sourceUnitsToSwap * sourceItem.asset.priceInUSD
+      : 0;
+  const maxNetReceiveUsd =
+    maxSwapUsd > 0
+      ? getSwapFeeBreakdown(maxSwapUsd, slippageBps).receiveUsd
+      : 0;
+
   const handleApply = () => {
     if (!sourceSymbol || !targetSymbol) return;
-    simulateSwapCollateral(sourceSymbol, targetSymbol, percentage, slippageBps);
+    simulateSwapCollateral(
+      sourceSymbol,
+      targetSymbol,
+      percentage,
+      slippageBps,
+      useAmount ? sourceUnitsToSwap : undefined
+    );
     setOpen(false);
     setSourceSymbol(null);
     setTargetSymbol(null);
     setPercentage(1);
+    setSourceAmount("");
+    setReceiveUsdAmount("");
   };
 
   const canApply =
@@ -100,20 +153,17 @@ export default function SwapCollateralDialog() {
     !!targetSymbol &&
     sourceSymbol !== targetSymbol &&
     sourceOptions.some((o) => o.value === sourceSymbol) &&
-    targetOptions.some((o) => o.value === targetSymbol);
-
-  const sourceItem = reserves.find((r) => r.asset.symbol === sourceSymbol);
-  const targetItem = reserves.find((r) => r.asset.symbol === targetSymbol);
-  const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
-  const swapUsd =
-    sourceItem && sourceSymbol
-      ? sourceItem.underlyingBalance * sourceItem.asset.priceInUSD * percentage
-      : 0;
+    targetOptions.some((o) => o.value === targetSymbol) &&
+    (useSourceAmount
+      ? sourceItem != null && sourceAmountNum != null && sourceAmountNum > 0
+      : useReceiveUsd
+        ? sourceItem != null && receiveUsdNum != null && receiveUsdNum > 0 && requiredSwapUsd > 0
+        : true);
   const feeBreakdown =
     swapUsd > 0 ? getSwapFeeBreakdown(swapUsd, slippageBps) : null;
   const sourceCollateralRemaining =
     sourceItem && sourceSymbol
-      ? sourceItem.underlyingBalance * (1 - percentage)
+      ? sourceItem.underlyingBalance - sourceUnitsToSwap
       : 0;
   const targetCollateralAfter =
     feeBreakdown && targetAsset
@@ -123,7 +173,13 @@ export default function SwapCollateralDialog() {
   const currentHF = addressData?.[currentMarket]?.workingData?.healthFactor;
   const projected =
     sourceSymbol && targetSymbol && feeBreakdown
-      ? getProjectedHealthFactorAfterSwapCollateral(sourceSymbol, targetSymbol, percentage, slippageBps)
+      ? getProjectedHealthFactorAfterSwapCollateral(
+          sourceSymbol,
+          targetSymbol,
+          percentage,
+          slippageBps,
+          useAmount ? sourceUnitsToSwap : undefined
+        )
       : null;
   const formatHF = (hf: number | undefined | null) =>
     hf == null || hf < 0 ? "—" : hf === Infinity ? "∞" : hf.toFixed(2);
@@ -141,6 +197,8 @@ export default function SwapCollateralDialog() {
           setSourceSymbol(null);
           setTargetSymbol(null);
           setPercentage(1);
+          setSourceAmount("");
+          setReceiveUsdAmount("");
         }}
         title={t`Simulate collateral swap`}
       >
@@ -168,7 +226,7 @@ export default function SwapCollateralDialog() {
             value={targetSymbol}
             onChange={setTargetSymbol}
             searchable
-            nothingFound={t`No suppliable assets`}
+            nothingFound={t`No other supplied collateral`}
             disabled={!sourceSymbol}
           />
 
@@ -180,15 +238,57 @@ export default function SwapCollateralDialog() {
               {SWAP_PERCENTAGES.map(({ value, label }) => (
                 <Button
                   key={value}
-                  variant={percentage === value ? "filled" : "light"}
+                  variant={percentage === value && !useAmount ? "filled" : "light"}
                   size="xs"
-                  onClick={() => setPercentage(value)}
+                  onClick={() => {
+                    setPercentage(value);
+                    setSourceAmount("");
+                    setReceiveUsdAmount("");
+                  }}
                 >
                   {label}
                 </Button>
               ))}
             </Group>
           </div>
+          {sourceSymbol && sourceItem && (
+            <>
+              <NumberInput
+                label={t`Amount of ${sourceSymbol} to swap`}
+                placeholder={t`e.g. 0.5`}
+                value={sourceAmount}
+                onChange={(v) => {
+                  setSourceAmount(v);
+                  if (v !== "" && v !== null && Number(v) > 0) setReceiveUsdAmount("");
+                }}
+                min={0}
+                step={0.00000001}
+                precision={8}
+                description={
+                  sourceItem.underlyingBalance > 0
+                    ? t`Max ${sourceItem.underlyingBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${sourceSymbol}`
+                    : undefined
+                }
+              />
+              <NumberInput
+                label={t`Or amount to receive (USD, after fees)`}
+                placeholder={t`e.g. 5000`}
+                value={receiveUsdAmount}
+                onChange={(v) => {
+                  setReceiveUsdAmount(v);
+                  if (v !== "" && v !== null && Number(v) > 0) setSourceAmount("");
+                }}
+                min={0}
+                step={1}
+                precision={2}
+                description={
+                  sourceItem && maxNetReceiveUsd > 0
+                    ? t`Net after fees. Max $${maxNetReceiveUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : undefined
+                }
+              />
+            </>
+          )}
 
           {feeBreakdown && (
             <Paper p="sm" withBorder radius="sm">

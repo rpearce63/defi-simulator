@@ -545,22 +545,46 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
   ) => {
     const marketRefPrice = freshHfData.marketReferenceCurrencyPriceInUSD;
     const marketEntry = store.addressData.nested(address)[marketId];
+    const existing = store.addressData.nested(address)[marketId].get({
+      noproxy: true,
+    }) as HealthFactorData;
+    const existingWorking = existing?.workingData;
+    const existingFetched = existing?.fetchedData;
+
     marketEntry.fetchedData.set(freshHfData.fetchedData);
     marketEntry.marketReferenceCurrencyPriceInUSD.set(marketRefPrice);
     marketEntry.availableAssets.set(freshHfData.availableAssets ?? []);
     marketEntry.lastFetched.set(freshHfData.lastFetched);
     marketEntry.fetchError.set(freshHfData.fetchError ?? "");
     marketEntry.isFetching.set(false);
-    const existing = store.addressData.nested(address)[marketId].get({
-      noproxy: true,
-    }) as HealthFactorData;
-    const existingWorking = existing?.workingData;
+
     if (!existingWorking) {
       store.addressData.nested(address)[marketId].workingData.set(
         freshHfData.workingData ?? freshHfData.fetchedData!,
       );
       return;
     }
+
+    // If working matched fetched before refresh (no user simulation), just adopt fresh data so the reset icon doesn't appear.
+    const hfMatch =
+      existingFetched != null &&
+      (existingWorking.healthFactor === existingFetched.healthFactor ||
+        (Number.isFinite(existingWorking.healthFactor) &&
+          Number.isFinite(existingFetched.healthFactor) &&
+          Math.abs((existingWorking.healthFactor ?? 0) - (existingFetched.healthFactor ?? 0)) < 1e-6));
+    const reservesLenMatch =
+      (existingWorking.userReservesData?.length ?? 0) ===
+      (existingFetched?.userReservesData?.length ?? 0);
+    const borrowsLenMatch =
+      (existingWorking.userBorrowsData?.length ?? 0) ===
+      (existingFetched?.userBorrowsData?.length ?? 0);
+    if (hfMatch && reservesLenMatch && borrowsLenMatch) {
+      store.addressData.nested(address)[marketId].workingData.set(
+        freshHfData.workingData ?? JSON.parse(JSON.stringify(freshHfData.fetchedData)),
+      );
+      return;
+    }
+
     const freshBySymbol: Record<string, AssetDetails> = {};
     (freshHfData.availableAssets ?? []).forEach((a) => {
       freshBySymbol[a.symbol] = a;
@@ -937,6 +961,8 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     targetSymbol: string,
     percentage: number,
     slippageBps?: number | null,
+    /** Optional flat amount in source collateral units. When set, overrides percentage. */
+    swapAmount?: number | null,
   ) => {
     const mult = getSwapFeeMultiplierForSlippageBps(
       slippageBps ?? DEFAULT_SLIPPAGE_BPS,
@@ -953,8 +979,11 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     ) {
       return;
     }
-    const swapUsd =
-      sourceItem.underlyingBalance * sourceItem.asset.priceInUSD * percentage;
+    const sourceUnitsToSwap =
+      swapAmount != null && swapAmount > 0
+        ? Math.min(swapAmount, sourceItem.underlyingBalance)
+        : sourceItem.underlyingBalance * percentage;
+    const swapUsd = sourceUnitsToSwap * sourceItem.asset.priceInUSD;
     const availableAssets =
       data?.[currentMarket]?.availableAssets ?? [];
     const targetAsset = availableAssets.find(
@@ -972,7 +1001,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     if (!targetExisting) {
       addReserveAsset(targetSymbol);
     }
-    const newSourceQty = sourceItem.underlyingBalance * (1 - percentage);
+    const newSourceQty = sourceItem.underlyingBalance - sourceUnitsToSwap;
     setReserveAssetQuantity(sourceSymbol, newSourceQty);
     setReserveAssetQuantity(targetSymbol, existingTargetQty + targetQuantity);
   };
@@ -1101,6 +1130,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     targetSymbol: string,
     percentage: number,
     slippageBps?: number | null,
+    swapAmount?: number | null,
   ): { healthFactor: number | null; liquidationScenario: AssetDetails[] } => {
     const marketData = data?.[currentMarket];
     const workingData = marketData?.workingData as AaveHealthFactorData | undefined;
@@ -1113,7 +1143,11 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     if (!sourceItem || sourceItem.underlyingBalance <= 0 || sourceSymbol === targetSymbol)
       return { healthFactor: null, liquidationScenario: [] };
     const mult = getSwapFeeMultiplierForSlippageBps(slippageBps ?? DEFAULT_SLIPPAGE_BPS);
-    const swapUsd = sourceItem.underlyingBalance * sourceItem.asset.priceInUSD * percentage;
+    const sourceUnitsToSwap =
+      swapAmount != null && swapAmount > 0
+        ? Math.min(swapAmount, sourceItem.underlyingBalance)
+        : sourceItem.underlyingBalance * percentage;
+    const swapUsd = sourceUnitsToSwap * sourceItem.asset.priceInUSD;
     const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
     if (!targetAsset || !isSuppliableAsset(targetAsset))
       return { healthFactor: null, liquidationScenario: [] };
@@ -1124,7 +1158,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     const clone = JSON.parse(JSON.stringify(workingData)) as AaveHealthFactorData;
     const cloneReserves = clone.userReservesData;
     const cloneSource = cloneReserves.find((r) => r.asset.symbol === sourceSymbol)!;
-    cloneSource.underlyingBalance = sourceItem.underlyingBalance * (1 - percentage);
+    cloneSource.underlyingBalance = sourceItem.underlyingBalance - sourceUnitsToSwap;
     const cloneTarget = cloneReserves.find((r) => r.asset.symbol === targetSymbol);
     if (cloneTarget) {
       cloneTarget.underlyingBalance = existingTargetQty + targetQuantity;
