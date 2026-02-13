@@ -37,6 +37,7 @@ import {
   Alert,
   Progress,
   Indicator,
+  Tabs,
 } from "@mantine/core";
 import {
   FaAsterisk,
@@ -52,6 +53,8 @@ import AddAssetDialog from "./AddAssetDialog";
 import SwapDebtDialog from "./SwapDebtDialog";
 import SwapCollateralDialog from "./SwapCollateralDialog";
 import RepayDebtDialog from "./RepayDebtDialog";
+import BorrowMoreDialog from "./BorrowMoreDialog";
+import LoopingStrategyTab from "./LoopingStrategyTab";
 
 import {
   useAaveData,
@@ -87,6 +90,7 @@ const AddressCard = ({ }: Props) => {
   const marketName =
     markets.find((market) => market.id === currentMarket)?.title ||
     "Unknown Market";
+  const [activeTab, setActiveTab] = useState<string | null>("position");
 
   return (
     <div style={{ marginTop: "15px" }}>
@@ -123,24 +127,37 @@ const AddressCard = ({ }: Props) => {
           </Trans>
         )}
         {!isIsolationMode && !isError && (
-          <>
-            {isFetching ? (
-              <HealthFactorSkeleton animate />
-            ) : (
-              <>
-                <HealthFactorSummary summaryRef={summaryRef} data={data} />
-                <ExtendedPositionDetails data={data} />
-                <LiquidationScenario
-                  data={data}
-                  applyLiquidationScenario={applyLiquidationScenario}
-                />
-                <UserReserveAssetList summaryOffset={summaryOffset} />
-                <Space h="xl" />
-                <Space h="xl" />
-                <UserBorrowedAssetList summaryOffset={summaryOffset} />
-              </>
-            )}
-          </>
+          <Tabs value={activeTab} onTabChange={setActiveTab}>
+            <Tabs.List>
+              <Tabs.Tab value="position">
+                <Trans>Position</Trans>
+              </Tabs.Tab>
+              <Tabs.Tab value="looping">
+                <Trans>Looping (cbBTC/USDC)</Trans>
+              </Tabs.Tab>
+            </Tabs.List>
+            <Tabs.Panel value="position" pt="md">
+              {isFetching ? (
+                <HealthFactorSkeleton animate />
+              ) : (
+                <>
+                  <HealthFactorSummary summaryRef={summaryRef} data={data} />
+                  <ExtendedPositionDetails data={data} />
+                  <LiquidationScenario
+                    data={data}
+                    applyLiquidationScenario={applyLiquidationScenario}
+                  />
+                  <UserReserveAssetList summaryOffset={summaryOffset} />
+                  <Space h="xl" />
+                  <Space h="xl" />
+                  <UserBorrowedAssetList summaryOffset={summaryOffset} />
+                </>
+              )}
+            </Tabs.Panel>
+            <Tabs.Panel value="looping" pt="md">
+              <LoopingStrategyTab onApplyToPosition={() => setActiveTab("position")} />
+            </Tabs.Panel>
+          </Tabs>
         )}
       </div>
     </div>
@@ -1274,6 +1291,7 @@ const UserBorrowedAssetList = ({
         </Title>
         <Group spacing="xs">
           <AddAssetDialog assetType="BORROW" />
+          <BorrowMoreDialog />
           {items.length > 0 && (
             <>
               <SwapDebtDialog />

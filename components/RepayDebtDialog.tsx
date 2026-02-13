@@ -2,6 +2,7 @@ import * as React from "react";
 import { t, Trans } from "@lingui/macro";
 import {
   Button,
+  Checkbox,
   Group,
   Modal,
   NumberInput,
@@ -40,6 +41,8 @@ export default function RepayDebtDialog() {
   const [percentage, setPercentage] = React.useState<number>(1);
   const [collateralRepayAmount, setCollateralRepayAmount] = React.useState<number | string>("");
   const [slippageBps, setSlippageBps] = React.useState<number | null>(null);
+  const [simulateLiquidation, setSimulateLiquidation] = React.useState(false);
+  const [liquidationBonusPct, setLiquidationBonusPct] = React.useState(5);
 
   const {
     addressData,
@@ -113,25 +116,48 @@ export default function RepayDebtDialog() {
       ? debtReduceUnits * (debtItem.asset.priceInUSD || 1)
       : 0;
   const collateralUsdNeeded =
-    mode === "collateral" && debtReduceUsd > 0
+    mode === "collateral" && debtReduceUsd > 0 && !simulateLiquidation
       ? getCollateralUsdNeededForRepay(debtReduceUsd, slippageBps)
       : 0;
+  const collateralUsdSeizedLiquidation =
+    mode === "collateral" && debtReduceUsd > 0 && simulateLiquidation && liquidationBonusPct >= 0
+      ? debtReduceUsd * (1 + liquidationBonusPct / 100)
+      : 0;
+  const collateralUsdForRepay =
+    mode === "collateral" && debtReduceUsd > 0
+      ? simulateLiquidation ? collateralUsdSeizedLiquidation : collateralUsdNeeded
+      : 0;
   const feeBreakdown =
-    mode === "collateral" && collateralUsdNeeded > 0
+    mode === "collateral" && collateralUsdNeeded > 0 && !simulateLiquidation
       ? getSwapFeeBreakdown(collateralUsdNeeded, slippageBps)
       : null;
   const collateralItem = reserves.find((r) => r.asset.symbol === collateralSymbol);
+  const actualDebtReduceUnits =
+    mode === "collateral" && debtItem && collateralItem && (collateralItem.asset.priceInUSD || 0) > 0 && (debtItem.asset.priceInUSD || 0) > 0
+      ? simulateLiquidation && liquidationBonusPct >= 0
+        ? Math.min(
+            debtReduceUnits,
+            (collateralItem.underlyingBalance * (collateralItem.asset.priceInUSD || 1) / (1 + liquidationBonusPct / 100)) / (debtItem.asset.priceInUSD || 1),
+            debtItem.totalBorrows,
+          )
+        : debtReduceUnits
+      : debtReduceUnits;
   const debtRemainingAfter =
     debtItem && debtSymbol && mode === "collateral"
-      ? debtItem.totalBorrows - debtReduceUnits
+      ? debtItem.totalBorrows - actualDebtReduceUnits
       : 0;
+  const actualCollateralUsdUsed =
+    mode === "collateral" && debtItem && collateralItem && actualDebtReduceUnits > 0
+      ? simulateLiquidation && liquidationBonusPct >= 0
+        ? actualDebtReduceUnits * (debtItem.asset.priceInUSD || 1) * (1 + liquidationBonusPct / 100)
+        : collateralUsdForRepay
+      : collateralUsdForRepay;
   const collateralRemainingAfter =
     mode === "collateral" &&
     collateralItem &&
-    collateralUsdNeeded > 0 &&
     (collateralItem.asset.priceInUSD || 0) > 0
       ? collateralItem.underlyingBalance -
-        collateralUsdNeeded / (collateralItem.asset.priceInUSD || 1)
+        (actualCollateralUsdUsed > 0 ? actualCollateralUsdUsed / (collateralItem.asset.priceInUSD || 1) : 0)
       : collateralItem?.underlyingBalance ?? 0;
 
   const manualAmountNum =
@@ -155,9 +181,9 @@ export default function RepayDebtDialog() {
       : null;
   const projectedCollateral =
     mode === "collateral" &&
-    feeBreakdown &&
     debtSymbol &&
-    collateralSymbol != null
+    collateralSymbol != null &&
+    (feeBreakdown != null || (simulateLiquidation && debtReduceUnits > 0))
       ? getProjectedHealthFactorAfterRepay({
           debtSymbol,
           mode: "collateral",
@@ -165,7 +191,10 @@ export default function RepayDebtDialog() {
           ...(useAmountForCollateral
             ? { collateralRepayAmount: Math.min(collateralRepayAmountNum!, debtItem?.totalBorrows ?? 0) }
             : { percentage }),
-          slippageBps,
+          slippageBps: simulateLiquidation ? undefined : slippageBps,
+          ...(simulateLiquidation && liquidationBonusPct >= 0
+            ? { liquidationBonusPct }
+            : {}),
         })
       : null;
   const liquidationScenarioManual = projectedManual?.liquidationScenario ?? [];
@@ -184,7 +213,8 @@ export default function RepayDebtDialog() {
         ...(useAmountForCollateral
           ? { collateralRepayAmount: Math.min(collateralRepayAmountNum!, debtItem?.totalBorrows ?? 0) }
           : { percentage }),
-        slippageBps,
+        slippageBps: simulateLiquidation ? undefined : slippageBps,
+        ...(simulateLiquidation && liquidationBonusPct >= 0 ? { liquidationBonusPct } : {}),
       });
     }
     setOpen(false);
@@ -194,6 +224,8 @@ export default function RepayDebtDialog() {
     setCollateralSymbol(null);
     setPercentage(1);
     setCollateralRepayAmount("");
+    setSimulateLiquidation(false);
+    setLiquidationBonusPct(5);
   };
 
   const canApplyManual =
@@ -225,6 +257,8 @@ export default function RepayDebtDialog() {
           setCollateralSymbol(null);
           setPercentage(1);
           setCollateralRepayAmount("");
+          setSimulateLiquidation(false);
+          setLiquidationBonusPct(5);
         }}
         title={t`Simulate repay debt`}
       >
@@ -333,38 +367,64 @@ export default function RepayDebtDialog() {
                     : undefined
                 }
               />
+              <Checkbox
+                label={t`Simulate liquidation (include liquidation bonus)`}
+                description={t`Model the liquidator fee: more collateral is seized than the debt repaid`}
+                checked={simulateLiquidation}
+                onChange={(e) => setSimulateLiquidation(e.currentTarget.checked)}
+              />
+              {simulateLiquidation && (
+                <NumberInput
+                  label={t`Liquidation bonus %`}
+                  description={t`Liquidator receives this % extra collateral (e.g. 5 = 5%)`}
+                  value={liquidationBonusPct}
+                  onChange={(v) => setLiquidationBonusPct(typeof v === "number" ? v : parseFloat(String(v)) || 5)}
+                  min={0}
+                  max={50}
+                  step={0.5}
+                  precision={1}
+                />
+              )}
             </>
           )}
 
-          {feeBreakdown && debtItem && debtSymbol && (
+          {(feeBreakdown || (simulateLiquidation && debtItem && debtSymbol && debtReduceUsd > 0)) && debtItem && debtSymbol && (
             <Paper p="sm" withBorder radius="sm">
               <Text size="sm" weight={600} mb="xs">
-                <Trans>Estimated fees</Trans>
+                {simulateLiquidation ? <Trans>Liquidation scenario</Trans> : <Trans>Estimated fees</Trans>}
               </Text>
               <Text size="xs" color="dimmed">
                 <Trans>Debt to repay</Trans>: {debtReduceUnits.toLocaleString(undefined, { maximumFractionDigits: 6 })} {debtSymbol}
                 {debtItem.totalBorrows > 0 && ` (${((100 * debtReduceUnits) / debtItem.totalBorrows).toFixed(1)}%)`}
                 {" "}= ${debtReduceUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
-              <Text size="xs" color="dimmed">
-                <Trans>Collateral value needed (before fees)</Trans>: ${collateralUsdNeeded.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Text>
-              <Text size="xs" color="dimmed">
-                <Trans>Swap fee (0.25%)</Trans>: ${feeBreakdown.swapFeeUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Text>
-              <Text size="xs" color="dimmed">
-                <Trans>Execution fee (0.05%)</Trans>: ${feeBreakdown.executionFeeUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Text>
-              <Text size="xs" color="dimmed">
-                <Trans>Slippage ({((feeBreakdown.slippageBps ?? DEFAULT_SLIPPAGE_BPS) / 100).toFixed(2)}%)</Trans>: ${feeBreakdown.slippageUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Text>
-              <Text size="xs" weight={500} mt="xs">
-                <Trans>Total fees + slippage</Trans>: ${(feeBreakdown.totalFeeUsd + feeBreakdown.slippageUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Text>
-              <Text size="xs" weight={500} mt={4}>
-                <Trans>Amount applied to debt</Trans>: ${feeBreakdown.receiveUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{" "}
-                (~{(feeBreakdown.receiveUsd / (debtItem.asset.priceInUSD || 1)).toLocaleString(undefined, { maximumFractionDigits: 4 })} {debtSymbol})
-              </Text>
+              {simulateLiquidation ? (
+                <Text size="xs" color="dimmed">
+                  <Trans>Collateral seized (with {liquidationBonusPct}% liquidation bonus)</Trans>: ${collateralUsdSeizedLiquidation.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Text>
+              ) : (
+                <>
+                  <Text size="xs" color="dimmed">
+                    <Trans>Collateral value needed (before fees)</Trans>: ${collateralUsdNeeded.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                  <Text size="xs" color="dimmed">
+                    <Trans>Swap fee (0.25%)</Trans>: ${feeBreakdown!.swapFeeUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                  <Text size="xs" color="dimmed">
+                    <Trans>Execution fee (0.05%)</Trans>: ${feeBreakdown!.executionFeeUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                  <Text size="xs" color="dimmed">
+                    <Trans>Slippage ({((feeBreakdown!.slippageBps ?? DEFAULT_SLIPPAGE_BPS) / 100).toFixed(2)}%)</Trans>: ${feeBreakdown!.slippageUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                  <Text size="xs" weight={500} mt="xs">
+                    <Trans>Total fees + slippage</Trans>: ${(feeBreakdown!.totalFeeUsd + feeBreakdown!.slippageUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </Text>
+                  <Text size="xs" weight={500} mt={4}>
+                    <Trans>Amount applied to debt</Trans>: ${feeBreakdown!.receiveUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{" "}
+                    (~{(feeBreakdown!.receiveUsd / (debtItem.asset.priceInUSD || 1)).toLocaleString(undefined, { maximumFractionDigits: 4 })} {debtSymbol})
+                  </Text>
+                </>
+              )}
               <Text size="xs" weight={500} mt="xs">
                 <Trans>Estimated remaining debt</Trans>: {debtSymbol} {debtRemainingAfter.toLocaleString(undefined, { maximumFractionDigits: 6 })}
               </Text>
