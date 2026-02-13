@@ -40,7 +40,6 @@
     "@mantine/notifications": "6.0.21",
     "@mantine/prism": "6.0.21",
     "@next/bundle-analyzer": "^13.2.4",
-    "@testing-library/react-hooks": "^8.0.1",
     "accounting": "^0.4.1",
     "alchemy-sdk": "^2.7.0",
     "bignumber.js": "^9.1.1",
