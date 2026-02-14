@@ -42,8 +42,8 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
   const [borrowPerLoopUSD, setBorrowPerLoopUSD] = React.useState<number | string>("");
   const [numLoops, setNumLoops] = React.useState(3);
   const [constraintMode, setConstraintMode] = React.useState<ConstraintMode>("minHF");
-  const [minHF, setMinHF] = React.useState(2);
-  const [maxLTVPct, setMaxLTVPct] = React.useState(80);
+  const [minHF, setMinHF] = React.useState(1.1);
+  const [maxLTVPct, setMaxLTVPct] = React.useState(70);
 
   const cbBTCAsset = availableAssets.find(
     (a) => a.symbol.toUpperCase() === COLLATERAL_SYMBOL.toUpperCase()
@@ -273,7 +273,7 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
           <NumberInput
             label={t`Min health factor`}
             value={minHF}
-            onChange={(v) => setMinHF(typeof v === "number" ? v : parseFloat(String(v)) || 2)}
+            onChange={(v) => setMinHF(typeof v === "number" ? v : parseFloat(String(v)) || 1.1)}
             min={0.5}
             max={10}
             step={0.01}
@@ -284,7 +284,7 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
           <NumberInput
             label={t`Max LTV %`}
             value={maxLTVPct}
-            onChange={(v) => setMaxLTVPct(typeof v === "number" ? v : parseFloat(String(v)) || 80)}
+            onChange={(v) => setMaxLTVPct(typeof v === "number" ? v : parseFloat(String(v)) || 70)}
             min={1}
             max={99}
             step={1}

@@ -801,6 +801,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
       ),
     );
     updateAllDerivedHealthFactorData();
+    store.isRefreshActive.set(true);
   };
 
   const setBorrowedAssetQuantity = (symbol: string, quantity: number) => {
@@ -880,6 +881,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     liquidationScenario?.forEach((asset) =>
       setAssetPriceInUSD(asset.symbol, asset.priceInUSD),
     );
+    store.isRefreshActive.set(false);
   };
 
   const setUseReserveAssetAsCollateral = (symbol: string, value: boolean) => {
