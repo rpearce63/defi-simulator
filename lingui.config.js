@@ -1,5 +1,12 @@
 /** @type {import('@lingui/conf').LinguiConfig} */
-
+/**
+ * Lingui workflow:
+ * 1. extract - Scans components/pages for Trans/t and writes src/locales/{locale}/messages.po.
+ *    Source strings (e.g. en) are filled; other locales get same keys with empty msgstr until translated.
+ * 2. Translate - Fill msgstr in .po files (e.g. via TranslationIO, or manually).
+ * 3. compile - Compiles .po -> messages.js for the app. Compile does NOT generate translations;
+ *    it only compiles whatever is already in the .po files. Run "npm run extract" before "npm run compile".
+ */
 const locales = [
   "be",
   "bg",

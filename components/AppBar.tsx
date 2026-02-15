@@ -109,7 +109,7 @@ export default function AppBar() {
             variant="gradient"
             gradient={{ from: "#339af0", to: "#339af0", deg: 90 }}
           >
-            DeFi Simulator
+            DeFi Simulator Plus
           </Title>
           {currentAddress && (
             <Group onClick={(e) => e.stopPropagation()} ml="sm">

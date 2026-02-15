@@ -117,10 +117,11 @@ export default function FooterLinks() {
         <div className={classes.logo}>
           <BiGhost size={36} />
           <Text size="xs" color="dimmed" className={classes.description}>
-            DeFi Simulator{" "}
+            DeFi Simulator Plus{" "}
             <Trans>
               is an unofficial, open source, community-built Aave debt
-              simulator and liquidation calculator.
+              simulator and liquidation calculator. Additional features added by @rpearce63:
+              Debt swapping, looping strategies, and more via simplified dialogs.
             </Trans>
           </Text>
         </div>

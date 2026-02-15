@@ -29,13 +29,22 @@ console.log({ langs })
 */
 
 /**
- * We do a dynamic import of just the catalog that we need
- * @param locale any locale string
+ * Load and activate a locale. Messages are loaded from the app bundle via dynamic
+ * import (../src/locales/{locale}/messages), not from the site URL. Next.js bundles
+ * each locale’s messages at build time; the defisim.xyz links in Head are only
+ * alternate hreflang links for SEO. If the locale has no compiled messages (e.g.
+ * only en exists locally), we fall back to English.
  */
 export async function activateLocale(locale: string) {
-  const { messages } = await import(`../src/locales/${locale}/messages`);
-  i18n.load(locale, messages);
-  i18n.activate(locale);
+  try {
+    const { messages } = await import(`../src/locales/${locale}/messages`);
+    i18n.load(locale, messages);
+    i18n.activate(locale);
+  } catch {
+    const { messages } = await import(`../src/locales/${defaultLocale}/messages`);
+    i18n.load(defaultLocale, messages);
+    i18n.activate(defaultLocale);
+  }
 }
 
 export default function App(props: AppProps & { colorScheme: ColorScheme }) {
@@ -59,16 +68,15 @@ export default function App(props: AppProps & { colorScheme: ColorScheme }) {
           data-cf-beacon='{"token": "42f927fda7404332a3720866ad63795f"}'
         />
         <link rel="shortcut icon" href="/favicon.ico" />
-        {languages.map((language) => {
-          return (
-            <link
-              key={language.code}
-              rel="alternate"
-              hrefLang={language.code}
-              href={`https://defisim.xyz/${language.code}`}
-            />
-          );
-        })}
+        {/* Alternate language URLs for SEO only; messages are loaded from the bundle (see activateLocale). */}
+        {languages.map((language) => (
+          <link
+            key={language.code}
+            rel="alternate"
+            hrefLang={language.code}
+            href={`https://defisim.xyz/${language.code}`}
+          />
+        ))}
       </Head>
       <I18nProvider i18n={i18n}>
         <MantineProvider theme={theme} withGlobalStyles withNormalizeCSS>
