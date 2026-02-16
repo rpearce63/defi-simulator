@@ -7,5 +7,8 @@ module.exports = {
       options: { optimizationLevel: 2 },
     },
   ],
-  framework: '@storybook/react',
+  framework: {
+    name: '@storybook/react-webpack5',
+    options: {},
+  },
 };
