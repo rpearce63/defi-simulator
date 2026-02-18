@@ -593,7 +593,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
       const intervalId = setInterval(() => {
         if (!store.get({ noproxy: true }).isRefreshActive) return;
         runRefresh();
-      }, 60000);
+      }, 30000);
       return () => clearInterval(intervalId);
     }
     return undefined;
