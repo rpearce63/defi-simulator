@@ -58,6 +58,12 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
   const usdcRecentDebt = borrows.find(
     (b) => b.asset.symbol.toUpperCase() === BORROW_SYMBOL.toUpperCase()
   )?.totalBorrows ?? 0;
+  // Total debt in USD (all borrowed assets) so looping "Start" reflects real available to borrow
+  const totalDebtUSD =
+    borrows.reduce(
+      (sum, b) => sum + b.totalBorrows * (b.asset?.priceInUSD ?? 1),
+      0
+    ) ?? 0;
 
   const priceCbBTC = cbBTCAsset?.priceInUSD ?? 1;
   const priceUSDC = usdcAsset?.priceInUSD ?? 1;
@@ -72,9 +78,10 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
       : typeof initialCbBTC === "number"
         ? initialCbBTC
         : parseFloat(String(initialCbBTC).trim()) || 0;
+  // When using current position, use total debt (all assets) in USDC-equivalent so HF/available borrow are correct
   const initialDebt =
-    useCurrentPosition && usdcRecentDebt >= 0
-      ? usdcRecentDebt
+    useCurrentPosition && totalDebtUSD >= 0 && priceUSDC > 0
+      ? totalDebtUSD / priceUSDC
       : typeof initialUSDC === "number"
         ? initialUSDC
         : parseFloat(String(initialUSDC).trim()) || 0;
@@ -220,6 +227,7 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
       {useCurrentPosition ? (
         <Text size="sm">
           <Trans>Initial from position</Trans>: {initialCollateral.toLocaleString(undefined, { maximumFractionDigits: 6 })} cbBTC, {initialDebt.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC
+          {borrows.length > 1 ? ` (${t`total debt`})` : null}
         </Text>
       ) : (
         <Group grow>

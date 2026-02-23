@@ -783,15 +783,21 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     }
   };
 
-  /** Apply a looping-simulator state (cbBTC collateral, USDC debt) to the main position so user can model liquidation etc. */
+  /** Apply a looping-simulator state (cbBTC collateral, USDC debt) to the main position so user can model liquidation etc.
+   * Zeros all other reserves and borrows so the applied position exactly matches the loop row (single collateral, single debt).
+   * Disables refresh so price/data refresh does not overwrite the applied state while testing price changes. */
   const applyLoopingStateToPosition = (
     collateralSymbol: string,
     collateralAmount: number,
     debtSymbol: string,
     debtAmount: number,
   ) => {
-    const workingData = store.addressData.nested(address)[currentMarket]
-      .workingData?.get({ noproxy: true }) as AaveHealthFactorData | undefined;
+    store.isRefreshActive.set(false);
+    const workingDataState = store.addressData.nested(address)[currentMarket]
+      .workingData as State<AaveHealthFactorData>;
+    const workingData = workingDataState?.get({
+      noproxy: true,
+    }) as AaveHealthFactorData | undefined;
     const hasReserve = workingData?.userReservesData?.some(
       (r) => r.asset.symbol === collateralSymbol,
     );
@@ -800,6 +806,18 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     );
     if (!hasReserve) addReserveAsset(collateralSymbol);
     if (!hasBorrow) addBorrowAsset(debtSymbol);
+
+    // Zero other borrows so applied position matches loop row (no leftover e.g. cbBTC debt)
+    workingData?.userBorrowsData?.forEach((b) => {
+      const sym = b.asset?.symbol;
+      if (sym && sym !== debtSymbol) setBorrowedAssetQuantity(sym, 0);
+    });
+    // Zero other reserves so applied position is only this collateral
+    workingData?.userReservesData?.forEach((r) => {
+      const sym = r.asset?.symbol;
+      if (sym && sym !== collateralSymbol) setReserveAssetQuantity(sym, 0);
+    });
+
     setReserveAssetQuantity(collateralSymbol, collateralAmount);
     setBorrowedAssetQuantity(debtSymbol, debtAmount);
   };
