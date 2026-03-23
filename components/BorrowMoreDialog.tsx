@@ -117,6 +117,10 @@ export default function BorrowMoreDialog() {
             onChange={setSymbol}
             searchable
             nothingFound={t`No borrowable assets`}
+            withinPortal
+            zIndex={10000}
+            dropdownPosition="bottom"
+            maxDropdownHeight={280}
           />
 
           {symbol && selectedAsset && (
