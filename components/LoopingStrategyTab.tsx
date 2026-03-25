@@ -24,6 +24,7 @@ const COLLATERAL_SYMBOL = "cbBTC";
 const BORROW_SYMBOL = "USDC";
 
 type ConstraintMode = "minHF" | "maxLTV" | "both";
+type BorrowMode = "fixed" | "max";
 
 type LoopingStrategyTabProps = {
   onApplyToPosition?: () => void;
@@ -39,6 +40,7 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
   const [useCurrentPosition, setUseCurrentPosition] = React.useState(true);
   const [initialCbBTC, setInitialCbBTC] = React.useState<number | string>("");
   const [initialUSDC, setInitialUSDC] = React.useState<number | string>("");
+  const [borrowMode, setBorrowMode] = React.useState<BorrowMode>("fixed");
   const [borrowPerLoopUSD, setBorrowPerLoopUSD] = React.useState<number | string>("");
   const [numLoops, setNumLoops] = React.useState(3);
   const [constraintMode, setConstraintMode] = React.useState<ConstraintMode>("minHF");
@@ -149,10 +151,16 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
 
       let maxBorrowByHF = Infinity;
       if (constraintMode === "minHF" || constraintMode === "both") {
-        const denom = minHF - liqThreshold;
-        if (denom > 0) {
-          const num = collateralUSD * liqThreshold - minHF * debtUSD;
-          maxBorrowByHF = Math.max(0, num / denom);
+        // Enforce min HF on the interim state (immediately after borrowing, before buying/depositing cbBTC):
+        // HF = (collateralUSD * liqThreshold) / (debtUSD + borrowUSD) >= minHF
+        // => borrowUSD <= collateralUSD * liqThreshold / minHF - debtUSD
+        if (minHF > 0) {
+          maxBorrowByHF = Math.max(
+            0,
+            (collateralUSD * liqThreshold) / minHF - debtUSD
+          );
+        } else {
+          maxBorrowByHF = 0;
         }
       }
       let maxBorrowByLTV = Infinity;
@@ -160,15 +168,14 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
         maxBorrowByLTV = collateralUSD * (maxLTVPct / 100) - debtUSD;
       }
 
-      const borrowThisLoop = Math.max(
+      const borrowCap = Math.max(
         0,
-        Math.min(
-          borrowPerLoop,
-          availableBorrowsUSD,
-          maxBorrowByHF,
-          maxBorrowByLTV
-        )
+        Math.min(availableBorrowsUSD, maxBorrowByHF, maxBorrowByLTV)
       );
+      const borrowThisLoop =
+        borrowMode === "max"
+          ? borrowCap
+          : Math.max(0, Math.min(borrowPerLoop, borrowCap));
 
       if (borrowThisLoop <= 0 && i === 1) break;
 
@@ -188,6 +195,7 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
     constraintMode,
     minHF,
     maxLTVPct,
+    borrowMode,
     priceCbBTC,
     priceUSDC,
     liqThreshold,
@@ -250,16 +258,32 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
         </Group>
       )}
 
-      <NumberInput
-        label={t`USDC to borrow per loop`}
-        description={t`Amount borrowed each loop and used to buy/deposit cbBTC`}
-        value={borrowPerLoopUSD}
-        onChange={setBorrowPerLoopUSD}
-        min={0}
-        step={100}
-        precision={2}
-        placeholder="e.g. 5000"
-      />
+      <div>
+        <Text size="sm" weight={500} mb={4}>
+          <Trans>Borrow amount per loop</Trans>
+        </Text>
+        <SegmentedControl
+          value={borrowMode}
+          onChange={(v) => setBorrowMode(v as BorrowMode)}
+          data={[
+            { label: t`Fixed`, value: "fixed" },
+            { label: t`Max`, value: "max" },
+          ]}
+        />
+      </div>
+
+      {borrowMode === "fixed" && (
+        <NumberInput
+          label={t`USDC to borrow per loop`}
+          description={t`Amount borrowed each loop and used to buy/deposit cbBTC`}
+          value={borrowPerLoopUSD}
+          onChange={setBorrowPerLoopUSD}
+          min={0}
+          step={100}
+          precision={2}
+          placeholder="e.g. 5000"
+        />
+      )}
 
       <div>
         <Text size="sm" weight={500} mb={4}>
