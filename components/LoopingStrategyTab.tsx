@@ -34,6 +34,8 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
   const { addressData, currentMarket, applyLoopingStateToPosition } = useAaveData("");
   const availableAssets = addressData?.[currentMarket]?.availableAssets ?? [];
   const marketRefPrice = addressData?.[currentMarket]?.marketReferenceCurrencyPriceInUSD ?? 1;
+  const userEmodeCategoryId =
+    addressData?.[currentMarket]?.workingData?.userEmodeCategoryId ?? 0;
   const reserves = addressData?.[currentMarket]?.workingData?.userReservesData ?? [];
   const borrows = addressData?.[currentMarket]?.workingData?.userBorrowsData ?? [];
 
@@ -69,8 +71,19 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
 
   const priceCbBTC = cbBTCAsset?.priceInUSD ?? 1;
   const priceUSDC = usdcAsset?.priceInUSD ?? 1;
-  const ltvBps = cbBTCAsset?.baseLTVasCollateral ?? 7500; // 75%
-  const liqThresholdBps = cbBTCAsset?.reserveLiquidationThreshold ?? 7800; // 78%
+  const activeBorrowSymbols = borrows
+    .filter((b) => b.totalBorrows > 0)
+    .map((b) => (b.asset.symbol || "").toUpperCase());
+  const hasOnlyUsdcOrGhoDebt =
+    activeBorrowSymbols.length > 0 &&
+    activeBorrowSymbols.every((s) => s === "USDC" || s === "GHO");
+  const useManualEmode80Ltv = userEmodeCategoryId > 0 && hasOnlyUsdcOrGhoDebt;
+  const ltvBps = useManualEmode80Ltv
+    ? 8000
+    : cbBTCAsset?.baseLTVasCollateral ?? 7500; // 75%
+  const liqThresholdBps = useManualEmode80Ltv
+    ? 8300
+    : cbBTCAsset?.reserveLiquidationThreshold ?? 7800; // 78%
   const ltv = ltvBps / 10000;
   const liqThreshold = liqThresholdBps / 10000;
 
@@ -114,7 +127,14 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
     const pushRow = (loop: number, label: string, borrowThisLoop: number) => {
       const colUsd = collateralCbBTC * priceCbBTC;
       const debUsd = debtUSDC * priceUSDC;
-      const syntheticAfter = buildSyntheticPosition(cbBTCAsset, usdcAsset, collateralCbBTC, debtUSDC, marketRef);
+      const syntheticAfter = buildSyntheticPosition(
+        cbBTCAsset,
+        usdcAsset,
+        collateralCbBTC,
+        debtUSDC,
+        marketRef,
+        userEmodeCategoryId
+      );
       updateDerivedHealthFactorData(syntheticAfter, marketRef);
       const hf = syntheticAfter.healthFactor ?? 0;
       const availableBorrowsUSD = Math.max(syntheticAfter.availableBorrowsUSD ?? 0, 0);
@@ -144,7 +164,8 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
         usdcAsset,
         collateralCbBTC,
         debtUSDC,
-        marketRef
+        marketRef,
+        userEmodeCategoryId
       );
       updateDerivedHealthFactorData(synthetic, marketRef);
       const availableBorrowsUSD = Math.max(synthetic.availableBorrowsUSD ?? 0, 0);
@@ -200,6 +221,7 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
     priceUSDC,
     liqThreshold,
     marketRefPrice,
+    userEmodeCategoryId,
   ]);
 
   const formatHF = (hf: number) =>
@@ -409,7 +431,8 @@ function buildSyntheticPosition(
   usdcAsset: AssetDetails,
   collateralCbBTC: number,
   debtUSDC: number,
-  marketRefPrice: number
+  marketRefPrice: number,
+  userEmodeCategoryId: number
 ): AaveHealthFactorData {
   const reserve: ReserveAssetDataItem = {
     asset: { ...cbBTCAsset, priceInMarketReferenceCurrency: (cbBTCAsset.priceInUSD || 1) / marketRefPrice },
@@ -435,6 +458,7 @@ function buildSyntheticPosition(
     currentLoanToValue: 0,
     userReservesData: [reserve],
     userBorrowsData: [borrow],
+    userEmodeCategoryId,
     txHistory: { data: [], isFetching: false, fetchError: "", lastFetched: 0 },
   };
 }

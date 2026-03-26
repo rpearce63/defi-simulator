@@ -144,6 +144,16 @@ export default function BorrowMoreDialog() {
                     : undefined
                 }
               />
+              {maxBorrowUnits > 0 && (
+                <Text
+                  size="xs"
+                  c="blue.4"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => setAmount(maxBorrowUnits)}
+                >
+                  <Trans>Use max</Trans>: {maxBorrowUnits.toLocaleString(undefined, { maximumFractionDigits: 4 })} {symbol}
+                </Text>
+              )}
             </>
           )}
 

@@ -473,7 +473,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
         const fetchData = async () => {
           try {
             const data: HealthFactorData = await getAaveData(address, market);
-            store.addressData.nested(address).merge({ [market.id]: data });
+            applyRefreshPreservingWorkingData(market.id, data);
           } catch (err) {
             const message = normalizeRpcErrorMessage(err);
             const hfData: HealthFactorData = {
@@ -507,7 +507,14 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     const existingWorking = existing?.workingData;
     const existingFetched = existing?.fetchedData;
 
-    marketEntry.fetchedData.set(freshHfData.fetchedData);
+    const normalizedFetched = freshHfData.fetchedData
+      ? updateDerivedHealthFactorData(
+        JSON.parse(JSON.stringify(freshHfData.fetchedData)) as AaveHealthFactorData,
+        marketRefPrice,
+      )
+      : freshHfData.fetchedData;
+
+    marketEntry.fetchedData.set(normalizedFetched);
     marketEntry.marketReferenceCurrencyPriceInUSD.set(marketRefPrice);
     marketEntry.availableAssets.set(freshHfData.availableAssets ?? []);
     marketEntry.lastFetched.set(freshHfData.lastFetched);
@@ -515,8 +522,15 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     marketEntry.isFetching.set(false);
 
     if (!existingWorking) {
+      const freshWorking = JSON.parse(
+        JSON.stringify(freshHfData.workingData ?? freshHfData.fetchedData!),
+      ) as AaveHealthFactorData;
+      const updatedWorking = updateDerivedHealthFactorData(
+        freshWorking,
+        marketRefPrice,
+      );
       store.addressData.nested(address)[marketId].workingData.set(
-        freshHfData.workingData ?? freshHfData.fetchedData!,
+        updatedWorking,
       );
       return;
     }
@@ -535,8 +549,17 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
       (existingWorking.userBorrowsData?.length ?? 0) ===
       (existingFetched?.userBorrowsData?.length ?? 0);
     if (hfMatch && reservesLenMatch && borrowsLenMatch) {
+      const freshWorking = JSON.parse(
+        JSON.stringify(
+          freshHfData.workingData ?? JSON.parse(JSON.stringify(freshHfData.fetchedData)),
+        ),
+      ) as AaveHealthFactorData;
+      const updatedWorking = updateDerivedHealthFactorData(
+        freshWorking,
+        marketRefPrice,
+      );
       store.addressData.nested(address)[marketId].workingData.set(
-        freshHfData.workingData ?? JSON.parse(JSON.stringify(freshHfData.fetchedData)),
+        updatedWorking,
       );
       return;
     }
@@ -1519,6 +1542,12 @@ export const updateDerivedHealthFactorData = (
   let weightedReservesETH: BigNumber = new BigNumber(0);
   let weightedLTVETH: BigNumber = new BigNumber(0);
   let totalBorrowsETH: BigNumber = new BigNumber(0);
+  const activeBorrowSymbols = data.userBorrowsData
+    .filter((b) => b.totalBorrows > 0)
+    .map((b) => (b.asset.symbol || "").toUpperCase());
+  const hasOnlyUsdcOrGhoDebt =
+    activeBorrowSymbols.length > 0 &&
+    activeBorrowSymbols.every((s) => s === "USDC" || s === "GHO");
 
   data.userReservesData.forEach((reserveItem) => {
     const underlyingBalance: BigNumber = new BigNumber(
@@ -1575,13 +1604,20 @@ export const updateDerivedHealthFactorData = (
       const isEmode: boolean =
         !!reserveItem.asset.eModeCategoryId &&
         reserveItem.asset.eModeCategoryId === data.userEmodeCategoryId;
-      const lt: number = isEmode
-        ? reserveItem.asset.eModeLiquidationThreshold || 0
-        : reserveItem.asset.reserveLiquidationThreshold || 0;
-
-      const ltv: number = isEmode
-        ? reserveItem.asset.eModeLtv || 0
-        : reserveItem.asset.baseLTVasCollateral || 0;
+      const applyManualEmode80Ltv =
+        (data.userEmodeCategoryId || 0) > 0 &&
+        (reserveItem.asset.symbol || "").toUpperCase() === "CBBTC" &&
+        hasOnlyUsdcOrGhoDebt;
+      const lt: number = applyManualEmode80Ltv
+        ? 8300
+        : isEmode
+          ? reserveItem.asset.eModeLiquidationThreshold || 0
+          : reserveItem.asset.reserveLiquidationThreshold || 0;
+      const ltv: number = applyManualEmode80Ltv
+        ? 8000
+        : isEmode
+          ? reserveItem.asset.eModeLtv || 0
+          : reserveItem.asset.baseLTVasCollateral || 0;
 
       const itemReserveLiquidationThreshold: BigNumber = new BigNumber(
         lt,
