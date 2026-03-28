@@ -38,6 +38,7 @@ import {
   Progress,
   Indicator,
   Tabs,
+  SegmentedControl,
 } from "@mantine/core";
 import {
   FaAsterisk,
@@ -633,11 +634,34 @@ type ExtendedPositionDetailsProps = {
 
 const ExtendedPositionDetails = ({ data }: ExtendedPositionDetailsProps) => {
   const [showDetails, setShowDetails] = useState(false);
+  const { setSimulatedEmodeActive } = useAaveData("");
 
   if (!data || data?.isFetching) return null;
 
   const addressHasPosition: boolean =
     (data.fetchedData?.healthFactor || -1) > -1;
+
+  const chainEmodeId = data.fetchedData?.userEmodeCategoryId ?? 0;
+  const workingForEmode = data.workingData;
+  const debtSymsForEmode = (workingForEmode?.userBorrowsData ?? [])
+    .filter((b) => b.totalBorrows > 0)
+    .map((b) => (b.asset.symbol || "").toUpperCase());
+  const onlyStableDebtForEmode =
+    debtSymsForEmode.length > 0 &&
+    debtSymsForEmode.every((s) => s === "USDC" || s === "GHO");
+  const hasCbbtcCollateralForEmode = (workingForEmode?.userReservesData ?? []).some(
+    (r) =>
+      r.usageAsCollateralEnabledOnUser &&
+      r.underlyingBalance > 0 &&
+      (r.asset.symbol || "").toUpperCase() === "CBBTC",
+  );
+  const showEmodeSimToggle =
+    addressHasPosition &&
+    (chainEmodeId > 0 || (onlyStableDebtForEmode && hasCbbtcCollateralForEmode));
+  const simulatedEmodeOn = (workingForEmode?.userEmodeCategoryId ?? 0) > 0;
+  const emodeOnOptionDisabled =
+    chainEmodeId <= 0 &&
+    !(onlyStableDebtForEmode && hasCbbtcCollateralForEmode);
 
   const origHasReserves: boolean =
     (data.fetchedData?.totalCollateralMarketReferenceCurrency || 0) > 0;
@@ -775,6 +799,30 @@ const ExtendedPositionDetails = ({ data }: ExtendedPositionDetailsProps) => {
         {(styles) => {
           return (
             <Grid>
+              {showEmodeSimToggle && (
+                <Grid.Col span={12}>
+                  <Paper p="sm" mb="sm" style={styles}>
+                    <Text size="xs" c="dimmed" mb="xs">
+                      <Trans>
+                        Simulate E-Mode: compare max LTV and health factor with E-Mode off (base caps) vs on.
+                      </Trans>
+                    </Text>
+                    <SegmentedControl
+                      fullWidth
+                      value={simulatedEmodeOn ? "on" : "off"}
+                      onChange={(v) => setSimulatedEmodeActive(v === "on")}
+                      data={[
+                        { label: t`E-Mode off`, value: "off" },
+                        {
+                          label: t`E-Mode on`,
+                          value: "on",
+                          disabled: emodeOnOptionDisabled,
+                        },
+                      ]}
+                    />
+                  </Paper>
+                </Grid.Col>
+              )}
               <Grid.Col
                 lg={3}
                 xs={6}

@@ -14,12 +14,14 @@ import {
   useAaveData,
   BorrowedAssetDataItem,
   isBorrowableAsset,
+  isWorkingDataEmodeActive,
+  isEmodeAllowedDebtSymbol,
 } from "../hooks/useAaveData";
 
 export default function BorrowMoreDialog() {
   const [open, setOpen] = React.useState(false);
   const [symbol, setSymbol] = React.useState<string | null>(null);
-  const [amount, setAmount] = React.useState<number | string>("");
+  const [amount, setAmount] = React.useState<number | "">("");
 
   const {
     addressData,
@@ -30,15 +32,22 @@ export default function BorrowMoreDialog() {
   } = useAaveData("");
 
   const availableAssets = addressData?.[currentMarket]?.availableAssets ?? [];
-  const borrows: BorrowedAssetDataItem[] =
-    addressData?.[currentMarket]?.workingData?.userBorrowsData ?? [];
+  const borrows = [
+    ...(addressData?.[currentMarket]?.workingData?.userBorrowsData ?? []),
+  ] as BorrowedAssetDataItem[];
   const availableBorrowsUSD = Math.max(
     addressData?.[currentMarket]?.workingData?.availableBorrowsUSD ?? 0,
     0,
   );
+  const workingData = addressData?.[currentMarket]?.workingData;
+  const emodeActive = isWorkingDataEmodeActive(workingData);
 
   const borrowableOptions = availableAssets
-    .filter(isBorrowableAsset)
+    .filter((a) => {
+      if (!isBorrowableAsset(a)) return false;
+      if (emodeActive && !isEmodeAllowedDebtSymbol(a.symbol)) return false;
+      return true;
+    })
     .map((a) => ({
       value: a.symbol,
       label: a.symbol,
@@ -104,9 +113,15 @@ export default function BorrowMoreDialog() {
       >
         <Stack spacing="md">
           <Text size="sm" color="dimmed">
-            <Trans>
-              Enter the amount you want to borrow. The new balance will be your current balance plus this amount. Health factor and liquidation scenario are updated for the simulated position.
-            </Trans>
+            {emodeActive ? (
+              <Trans>
+                E-Mode is on: you can only borrow USDC or GHO. The new balance will be your current balance plus this amount. Health factor and liquidation scenario are updated for the simulated position.
+              </Trans>
+            ) : (
+              <Trans>
+                Enter the amount you want to borrow. The new balance will be your current balance plus this amount. Health factor and liquidation scenario are updated for the simulated position.
+              </Trans>
+            )}
           </Text>
 
           <Select

@@ -13,6 +13,8 @@ import {
   useAaveData,
   BorrowedAssetDataItem,
   isBorrowableAsset,
+  isWorkingDataEmodeActive,
+  isEmodeAllowedDebtSymbol,
   getSwapFeeBreakdown,
   fetchSlippageToleranceBps,
   DEFAULT_SLIPPAGE_BPS,
@@ -67,10 +69,31 @@ export default function SwapDebtDialog() {
     };
   }, [sourceSymbol, targetSymbol, currentMarket, market?.chainId]);
 
-  const borrows: BorrowedAssetDataItem[] =
-    addressData?.[currentMarket]?.workingData?.userBorrowsData ?? [];
+  const workingData = addressData?.[currentMarket]?.workingData;
+  const emodeActive = isWorkingDataEmodeActive(workingData);
+
+  React.useEffect(() => {
+    if (!emodeActive) return;
+    if (sourceSymbol && !isEmodeAllowedDebtSymbol(sourceSymbol)) {
+      setSourceSymbol(null);
+      setTargetSymbol(null);
+      return;
+    }
+    if (
+      targetSymbol &&
+      (!isEmodeAllowedDebtSymbol(targetSymbol) ||
+        targetSymbol === sourceSymbol)
+    ) {
+      setTargetSymbol(null);
+    }
+  }, [emodeActive, sourceSymbol, targetSymbol]);
+
+  const borrows = [
+    ...(addressData?.[currentMarket]?.workingData?.userBorrowsData ?? []),
+  ] as BorrowedAssetDataItem[];
   const sourceOptions = borrows
     .filter((b) => b.totalBorrows > 0)
+    .filter((b) => !emodeActive || isEmodeAllowedDebtSymbol(b.asset.symbol))
     .map((b) => ({
       value: b.asset.symbol,
       label: `${b.asset.symbol} (${b.totalBorrows.toLocaleString(undefined, { maximumFractionDigits: 6 })})`,
@@ -79,7 +102,9 @@ export default function SwapDebtDialog() {
   const targetOptions = availableAssets
     .filter(
       (a) =>
-        a.symbol !== sourceSymbol && isBorrowableAsset(a),
+        a.symbol !== sourceSymbol &&
+        isBorrowableAsset(a) &&
+        (!emodeActive || isEmodeAllowedDebtSymbol(a.symbol)),
     )
     .map((a) => ({
       value: a.symbol,
@@ -146,9 +171,15 @@ export default function SwapDebtDialog() {
       >
         <Stack spacing="md">
           <Text size="sm" color="dimmed">
-            <Trans>
-              Simulate swapping part of your debt from one asset to another (e.g. USDC → cbBTC) to see the effect on health factor.
-            </Trans>
+            {emodeActive ? (
+              <Trans>
+                E-Mode is on: you can only swap debt between USDC and GHO. This shows the effect on health factor.
+              </Trans>
+            ) : (
+              <Trans>
+                Simulate swapping part of your debt from one asset to another (e.g. USDC → ETH) to see the effect on health factor.
+              </Trans>
+            )}
           </Text>
 
           <Select

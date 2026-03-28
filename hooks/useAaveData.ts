@@ -432,6 +432,9 @@ function normalizeRpcErrorMessage(err: unknown): string {
   return "Failed to load data. Try again.";
 }
 
+/** Fallback E-Mode category when simulating on without chain data (cbBTC + USDC/GHO). */
+const SIMULATED_EMODE_FALLBACK_CATEGORY_ID = 10;
+
 /** hook to fetch user aave data
  * @returns { currentAddress,
     currentMarket,
@@ -701,6 +704,13 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
   };
 
   const addBorrowAsset = (symbol: string) => {
+    const working = data?.[currentMarket]?.workingData;
+    if (
+      isWorkingDataEmodeActive(working) &&
+      !isEmodeAllowedDebtSymbol(symbol)
+    ) {
+      return;
+    }
     const asset = data[currentMarket].availableAssets?.find(
       (a) => a.symbol === symbol,
     ) as AssetDetails;
@@ -954,6 +964,15 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     ) {
       return;
     }
+    const workingEmode = data?.[currentMarket]?.workingData as
+      | AaveHealthFactorData
+      | undefined;
+    if (
+      isWorkingDataEmodeActive(workingEmode) &&
+      !isEmodeAllowedDebtSwap(sourceSymbol, targetSymbol)
+    ) {
+      return;
+    }
     const swapUsd =
       sourceItem.totalBorrows * sourceItem.asset.priceInUSD * percentage;
     const availableAssets =
@@ -1144,6 +1163,12 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     const sourceItem = borrows.find((b) => b.asset.symbol === sourceSymbol);
     if (!sourceItem || sourceItem.totalBorrows <= 0 || sourceSymbol === targetSymbol)
       return { healthFactor: null, liquidationScenario: [] };
+    if (
+      isWorkingDataEmodeActive(workingData) &&
+      !isEmodeAllowedDebtSwap(sourceSymbol, targetSymbol)
+    ) {
+      return { healthFactor: null, liquidationScenario: [] };
+    }
     const mult = getSwapFeeMultiplierForSlippageBps(slippageBps ?? DEFAULT_SLIPPAGE_BPS);
     const swapUsd = sourceItem.totalBorrows * sourceItem.asset.priceInUSD * percentage;
     const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
@@ -1322,6 +1347,12 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     const marketRefPrice = marketData?.marketReferenceCurrencyPriceInUSD ?? 1;
     const availableAssets = marketData?.availableAssets ?? [];
     if (!workingData || additionalUnits <= 0) return { healthFactor: null, liquidationScenario: [] };
+    if (
+      isWorkingDataEmodeActive(workingData) &&
+      !isEmodeAllowedDebtSymbol(symbol)
+    ) {
+      return { healthFactor: null, liquidationScenario: [] };
+    }
     const clone = JSON.parse(JSON.stringify(workingData)) as AaveHealthFactorData;
     const existing = clone.userBorrowsData.find((b) => b.asset.symbol === symbol);
     if (existing) {
@@ -1341,6 +1372,57 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     const updated = updateDerivedHealthFactorData(clone, marketRefPrice);
     const liquidationScenario = getCalculatedLiquidationScenario(updated, marketRefPrice) ?? [];
     return { healthFactor: updated.healthFactor ?? null, liquidationScenario };
+  };
+
+  /** Toggle simulated E-Mode for working position (0 = off). Uses chain category from fetched data when available; otherwise category 10 for cbBTC + USDC/GHO. */
+  const setSimulatedEmodeActive = (active: boolean) => {
+    const healthFactorItem = store.addressData.nested(address)?.[
+      currentMarket
+    ] as State<HealthFactorData>;
+    const fetched = healthFactorItem?.fetchedData?.get({
+      noproxy: true,
+    }) as AaveHealthFactorData | undefined;
+    const working = healthFactorItem?.workingData?.get({
+      noproxy: true,
+    }) as AaveHealthFactorData | undefined;
+    const marketRef =
+      healthFactorItem?.marketReferenceCurrencyPriceInUSD?.get() ?? 1;
+    if (!working) return;
+
+    let nextCategoryId = 0;
+    if (active) {
+      const chainId = fetched?.userEmodeCategoryId ?? 0;
+      if (chainId > 0) {
+        nextCategoryId = chainId;
+      } else {
+        const debtSyms = working.userBorrowsData
+          .filter((b) => b.totalBorrows > 0)
+          .map((b) => (b.asset.symbol || "").toUpperCase());
+        const onlyStableDebt =
+          debtSyms.length > 0 &&
+          debtSyms.every((s) => s === "USDC" || s === "GHO");
+        const hasCbbtcCollateral = working.userReservesData.some(
+          (r) =>
+            r.usageAsCollateralEnabledOnUser &&
+            r.underlyingBalance > 0 &&
+            (r.asset.symbol || "").toUpperCase() === "CBBTC",
+        );
+        if (onlyStableDebt && hasCbbtcCollateral) {
+          nextCategoryId = SIMULATED_EMODE_FALLBACK_CATEGORY_ID;
+        }
+      }
+    }
+
+    const clone = JSON.parse(JSON.stringify(working)) as AaveHealthFactorData;
+    clone.userEmodeCategoryId = nextCategoryId;
+    const updated = updateDerivedHealthFactorData(clone, marketRef);
+    (
+      updated as AaveHealthFactorData & {
+        liquidationScenario?: AssetDetails[];
+      }
+    ).liquidationScenario =
+      getCalculatedLiquidationScenario(updated, marketRef) ?? [];
+    healthFactorItem.workingData.set(updated);
   };
 
   //console.log({ data })
@@ -1374,6 +1456,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     getProjectedHealthFactorAfterRepay,
     getProjectedHealthFactorAfterBorrow,
     applyLoopingStateToPosition,
+    setSimulatedEmodeActive,
   };
 }
 
@@ -1429,6 +1512,26 @@ export const isActiveAsset = (asset: AssetDetails) => {
 export const isBorrowableAsset = (asset: AssetDetails) => {
   return isActiveAsset(asset) && asset.borrowingEnabled;
 };
+
+/** True when working position has an active (simulated) E-Mode category. */
+export const isWorkingDataEmodeActive = (
+  data: { userEmodeCategoryId?: number } | undefined | null,
+): boolean => (data?.userEmodeCategoryId ?? 0) > 0;
+
+/** Debt assets that may be borrowed or targeted in debt swaps under E-Mode (cbBTC stablecoin category). */
+export const isEmodeAllowedDebtSymbol = (symbol: string): boolean => {
+  const s = symbol.toUpperCase();
+  return s === "USDC" || s === "GHO";
+};
+
+/** E-Mode debt swap: only USDC ↔ GHO. */
+export const isEmodeAllowedDebtSwap = (
+  sourceSymbol: string,
+  targetSymbol: string,
+): boolean =>
+  isEmodeAllowedDebtSymbol(sourceSymbol) &&
+  isEmodeAllowedDebtSymbol(targetSymbol) &&
+  sourceSymbol.toUpperCase() !== targetSymbol.toUpperCase();
 
 export const isSuppliableAsset = (asset: AssetDetails) => {
   return isActiveAsset(asset) && asset.usageAsCollateralEnabled;

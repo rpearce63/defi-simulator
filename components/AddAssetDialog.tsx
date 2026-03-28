@@ -19,6 +19,8 @@ import {
   BorrowedAssetDataItem,
   isBorrowableAsset,
   isSuppliableAsset,
+  isWorkingDataEmodeActive,
+  isEmodeAllowedDebtSymbol,
 } from "../hooks/useAaveData";
 import TokenIcon from "./TokenIcon";
 
@@ -31,6 +33,9 @@ export default function AddAssetDialog({ assetType }: AddAssetDialogProps) {
   const [searchText, setSearchText] = React.useState("");
   const { addressData, currentMarket, addBorrowAsset, addReserveAsset } =
     useAaveData("");
+
+  const workingData = addressData?.[currentMarket]?.workingData;
+  const emodeActive = isWorkingDataEmodeActive(workingData);
 
   const handleClose = () => {
     setSearchText("");
@@ -75,7 +80,13 @@ export default function AddAssetDialog({ assetType }: AddAssetDialogProps) {
           : !borrows.find((item) => item.asset.symbol === asset.symbol);
       })
       .filter((asset) => {
-        return assetType === "BORROW" ? isBorrowableAsset(asset) : isSuppliableAsset(asset);
+        if (assetType === "BORROW") {
+          if (!isBorrowableAsset(asset)) return false;
+          if (emodeActive && !isEmodeAllowedDebtSymbol(asset.symbol))
+            return false;
+          return true;
+        }
+        return isSuppliableAsset(asset);
       })
     : new Array(...(addressData?.[currentMarket]?.availableAssets || []));
 
