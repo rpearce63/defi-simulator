@@ -56,12 +56,14 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
     (a) => a.symbol.toUpperCase() === BORROW_SYMBOL.toUpperCase()
   ) as AssetDetails | undefined;
 
-  const cbBTCRecentBalance = reserves.find(
+  const cbBTCReserve = reserves.find(
     (r) => r.asset.symbol.toUpperCase() === COLLATERAL_SYMBOL.toUpperCase()
-  )?.underlyingBalance ?? 0;
-  const usdcRecentDebt = borrows.find(
+  );
+  const usdcBorrow = borrows.find(
     (b) => b.asset.symbol.toUpperCase() === BORROW_SYMBOL.toUpperCase()
-  )?.totalBorrows ?? 0;
+  );
+  const cbBTCRecentBalance = cbBTCReserve?.underlyingBalance ?? 0;
+  const usdcRecentDebt = usdcBorrow?.totalBorrows ?? 0;
   // Total debt in USD (all borrowed assets) so looping "Start" reflects real available to borrow
   const totalDebtUSD =
     borrows.reduce(
@@ -69,8 +71,17 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
       0
     ) ?? 0;
 
-  const priceCbBTC = cbBTCAsset?.priceInUSD ?? 1;
-  const priceUSDC = usdcAsset?.priceInUSD ?? 1;
+  // Use Position tab adjusted prices from workingData; fall back to market prices in availableAssets
+  const priceCbBTC =
+    cbBTCReserve?.asset?.priceInUSD ?? cbBTCAsset?.priceInUSD ?? 1;
+  const priceUSDC =
+    usdcBorrow?.asset?.priceInUSD ?? usdcAsset?.priceInUSD ?? 1;
+  const cbBTCForCalc = cbBTCAsset
+    ? { ...cbBTCAsset, priceInUSD: priceCbBTC }
+    : undefined;
+  const usdcForCalc = usdcAsset
+    ? { ...usdcAsset, priceInUSD: priceUSDC }
+    : undefined;
   const activeBorrowSymbols = borrows
     .filter((b) => b.totalBorrows > 0)
     .map((b) => (b.asset.symbol || "").toUpperCase());
@@ -107,7 +118,7 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
       : parseFloat(String(borrowPerLoopUSD).trim()) || 0;
 
   const steps = React.useMemo(() => {
-    if (!cbBTCAsset || !usdcAsset) return [];
+    if (!cbBTCForCalc || !usdcForCalc) return [];
     const rows: Array<{
       loop: number;
       label: string;
@@ -128,8 +139,8 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
       const colUsd = collateralCbBTC * priceCbBTC;
       const debUsd = debtUSDC * priceUSDC;
       const syntheticAfter = buildSyntheticPosition(
-        cbBTCAsset,
-        usdcAsset,
+        cbBTCForCalc,
+        usdcForCalc,
         collateralCbBTC,
         debtUSDC,
         marketRef,
@@ -160,8 +171,8 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
       const debtUSD = debtUSDC * priceUSDC;
 
       const synthetic: AaveHealthFactorData = buildSyntheticPosition(
-        cbBTCAsset,
-        usdcAsset,
+        cbBTCForCalc,
+        usdcForCalc,
         collateralCbBTC,
         debtUSDC,
         marketRef,
@@ -209,6 +220,8 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
   }, [
     cbBTCAsset,
     usdcAsset,
+    priceCbBTC,
+    priceUSDC,
     initialCollateral,
     initialDebt,
     borrowPerLoop,
@@ -217,8 +230,6 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
     minHF,
     maxLTVPct,
     borrowMode,
-    priceCbBTC,
-    priceUSDC,
     liqThreshold,
     marketRefPrice,
     userEmodeCategoryId,
