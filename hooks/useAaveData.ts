@@ -408,13 +408,24 @@ export function getSwapFeeBreakdown(
   };
 }
 
-/** USD of target debt when swapping source debt: par conversion plus fees/slippage as extra liability. */
+/** Aave CoW debt swaps charge 0 bps protocol fee (see swap-features docs). */
+export const DEBT_SWAP_FEE_BPS = 0;
+
+/** Estimated slippage (USD) added to target debt on a debt swap. */
+export function getDebtSwapSlippageUsd(
+  swapUsd: number,
+  slippageBps?: number | null,
+) {
+  const bps = slippageBps ?? DEFAULT_SLIPPAGE_BPS;
+  return swapUsd * (bps / 10000);
+}
+
+/** USD of target debt: oracle USD par plus estimated slippage (no protocol swap fee). */
 export function getDebtSwapTargetUsd(
   swapUsd: number,
   slippageBps?: number | null,
 ) {
-  const breakdown = getSwapFeeBreakdown(swapUsd, slippageBps);
-  return swapUsd + breakdown.totalFeeUsd + breakdown.slippageUsd;
+  return swapUsd + getDebtSwapSlippageUsd(swapUsd, slippageBps);
 }
 
 /** Collateral value (USD) needed so that after fees/slippage you receive receiveUsd. */
@@ -949,8 +960,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
 
   /**
    * Simulate swapping a percentage of debt from one borrowed asset to another
-   * (e.g. USDC → cbBTC). Fees and optional slippage (bps) applied. Turns off auto-refresh.
-   * @param slippageBps optional; from CoW BFF or use default (150 bps)
+   * (e.g. USDC → cbBTC). Converts at USD par plus estimated slippage; 0 bps protocol fee.
    */
   const simulateSwapDebt = (
     sourceSymbol: string,

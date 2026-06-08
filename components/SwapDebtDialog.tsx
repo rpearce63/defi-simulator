@@ -16,8 +16,8 @@ import {
   isBorrowableAsset,
   isWorkingDataEmodeActive,
   isEmodeAllowedDebtSymbol,
-  getSwapFeeBreakdown,
   getDebtSwapTargetUsd,
+  getDebtSwapSlippageUsd,
   fetchSlippageToleranceBps,
   DEFAULT_SLIPPAGE_BPS,
   markets,
@@ -46,6 +46,8 @@ export default function SwapDebtDialog() {
 
   const availableAssets = addressData?.[currentMarket]?.availableAssets ?? [];
   const market = markets.find((m) => m.id === currentMarket);
+  const workingData = addressData?.[currentMarket]?.workingData;
+  const emodeActive = isWorkingDataEmodeActive(workingData);
 
   React.useEffect(() => {
     if (!sourceSymbol || !targetSymbol || !market) {
@@ -70,9 +72,6 @@ export default function SwapDebtDialog() {
       cancelled = true;
     };
   }, [sourceSymbol, targetSymbol, currentMarket, market?.chainId]);
-
-  const workingData = addressData?.[currentMarket]?.workingData;
-  const emodeActive = isWorkingDataEmodeActive(workingData);
 
   React.useEffect(() => {
     if (!emodeActive) return;
@@ -136,8 +135,9 @@ export default function SwapDebtDialog() {
     sourceItem && sourceSymbol
       ? sourceItem.totalBorrows * sourceItem.asset.priceInUSD * percentage
       : 0;
-  const feeBreakdown =
-    swapUsd > 0 ? getSwapFeeBreakdown(swapUsd, slippageBps) : null;
+  const slippageUsd =
+    swapUsd > 0 ? getDebtSwapSlippageUsd(swapUsd, slippageBps) : 0;
+  const effectiveSlippageBps = slippageBps ?? DEFAULT_SLIPPAGE_BPS;
   const targetDebtFromSwapUsd =
     swapUsd > 0 ? getDebtSwapTargetUsd(swapUsd, slippageBps) : 0;
   const sourceDebtRemaining =
@@ -155,7 +155,7 @@ export default function SwapDebtDialog() {
     0,
   );
   const projected =
-    sourceSymbol && targetSymbol && feeBreakdown
+    sourceSymbol && targetSymbol && swapUsd > 0
       ? getProjectedHealthFactorAfterSwapDebt(sourceSymbol, targetSymbol, percentage, slippageBps)
       : null;
   const formatHF = (hf: number | undefined | null) =>
@@ -193,7 +193,7 @@ export default function SwapDebtDialog() {
               </Trans>
             ) : (
               <Trans>
-                Simulate swapping part of your debt from one asset to another (e.g. USDC → ETH) to see the effect on health factor.
+                Simulate swapping part of your debt from one asset to another (e.g. USDC → cbBTC). Aave debt swaps convert at USD par with no protocol swap fee; estimated slippage is added to the new debt.
               </Trans>
             )}
           </Text>
@@ -237,28 +237,22 @@ export default function SwapDebtDialog() {
             </Group>
           </div>
 
-          {feeBreakdown && (
+          {swapUsd > 0 && (
             <Paper p="sm" withBorder radius="sm">
               <Text size="sm" weight={600} mb="xs">
-                <Trans>Estimated fees</Trans>
+                <Trans>Swap summary</Trans>
               </Text>
               <Text size="xs" color="dimmed">
-                <Trans>Swap value</Trans>: ${swapUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <Trans>Swap value (USD par)</Trans>: ${formatUsd(swapUsd)}
               </Text>
               <Text size="xs" color="dimmed">
-                <Trans>Swap fee (0.25%)</Trans>: ${feeBreakdown.swapFeeUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <Trans>Protocol swap fee</Trans>: 0 bps
               </Text>
               <Text size="xs" color="dimmed">
-                <Trans>Execution fee (0.05%)</Trans>: ${feeBreakdown.executionFeeUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Text>
-              <Text size="xs" color="dimmed">
-                <Trans>Slippage ({((feeBreakdown.slippageBps ?? DEFAULT_SLIPPAGE_BPS) / 100).toFixed(2)}%)</Trans>: ${feeBreakdown.slippageUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Text>
-              <Text size="xs" weight={500} mt="xs">
-                <Trans>Total fees + slippage (added to debt)</Trans>: ${(feeBreakdown.totalFeeUsd + feeBreakdown.slippageUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <Trans>Estimated slippage ({(effectiveSlippageBps / 100).toFixed(2)}%, added to debt)</Trans>: ${formatUsd(slippageUsd)}
               </Text>
               <Text size="xs" weight={500} mt={4}>
-                <Trans>New target debt from swap (par + fees)</Trans>: ${targetDebtFromSwapUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <Trans>New target debt from swap (par + slippage)</Trans>: ${formatUsd(targetDebtFromSwapUsd)}
               </Text>
               <Text size="xs" weight={500} mt="xs">
                 <Trans>Estimated remaining debt</Trans>: {sourceSymbol} {sourceDebtRemaining.toLocaleString(undefined, { maximumFractionDigits: 6 })}
