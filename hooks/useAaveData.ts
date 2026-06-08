@@ -408,6 +408,15 @@ export function getSwapFeeBreakdown(
   };
 }
 
+/** USD of target debt when swapping source debt: par conversion plus fees/slippage as extra liability. */
+export function getDebtSwapTargetUsd(
+  swapUsd: number,
+  slippageBps?: number | null,
+) {
+  const breakdown = getSwapFeeBreakdown(swapUsd, slippageBps);
+  return swapUsd + breakdown.totalFeeUsd + breakdown.slippageUsd;
+}
+
 /** Collateral value (USD) needed so that after fees/slippage you receive receiveUsd. */
 export function getCollateralUsdNeededForRepay(
   receiveUsd: number,
@@ -949,9 +958,6 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     percentage: number,
     slippageBps?: number | null,
   ) => {
-    const mult = getSwapFeeMultiplierForSlippageBps(
-      slippageBps ?? DEFAULT_SLIPPAGE_BPS,
-    );
     const borrows =
       data?.[currentMarket]?.workingData?.userBorrowsData ?? [];
     const sourceItem = borrows.find(
@@ -984,7 +990,8 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
       return;
     }
     const targetPrice = targetAsset.priceInUSD || 1;
-    const targetQuantity = (swapUsd * mult) / targetPrice;
+    const targetDebtUsd = getDebtSwapTargetUsd(swapUsd, slippageBps);
+    const targetQuantity = targetDebtUsd / targetPrice;
     const targetExisting = borrows.find(
       (b) => b.asset.symbol === targetSymbol,
     );
@@ -1152,30 +1159,30 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     targetSymbol: string,
     percentage: number,
     slippageBps?: number | null,
-  ): { healthFactor: number | null; liquidationScenario: AssetDetails[] } => {
+  ): { healthFactor: number | null; availableBorrowsUSD: number | null; liquidationScenario: AssetDetails[] } => {
     const marketData = data?.[currentMarket];
     const workingData = marketData?.workingData as AaveHealthFactorData | undefined;
     const availableAssets = marketData?.availableAssets ?? [];
     const marketRefPrice = marketData?.marketReferenceCurrencyPriceInUSD ?? 1;
     if (!workingData || !workingData.userBorrowsData)
-      return { healthFactor: null, liquidationScenario: [] };
+      return { healthFactor: null, availableBorrowsUSD: null, liquidationScenario: [] };
     const borrows = workingData.userBorrowsData;
     const sourceItem = borrows.find((b) => b.asset.symbol === sourceSymbol);
     if (!sourceItem || sourceItem.totalBorrows <= 0 || sourceSymbol === targetSymbol)
-      return { healthFactor: null, liquidationScenario: [] };
+      return { healthFactor: null, availableBorrowsUSD: null, liquidationScenario: [] };
     if (
       isWorkingDataEmodeActive(workingData) &&
       !isEmodeAllowedDebtSwap(sourceSymbol, targetSymbol)
     ) {
-      return { healthFactor: null, liquidationScenario: [] };
+      return { healthFactor: null, availableBorrowsUSD: null, liquidationScenario: [] };
     }
-    const mult = getSwapFeeMultiplierForSlippageBps(slippageBps ?? DEFAULT_SLIPPAGE_BPS);
     const swapUsd = sourceItem.totalBorrows * sourceItem.asset.priceInUSD * percentage;
     const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
     if (!targetAsset || !isBorrowableAsset(targetAsset))
-      return { healthFactor: null, liquidationScenario: [] };
+      return { healthFactor: null, availableBorrowsUSD: null, liquidationScenario: [] };
     const targetPrice = targetAsset.priceInUSD || 1;
-    const targetQuantity = (swapUsd * mult) / targetPrice;
+    const targetDebtUsd = getDebtSwapTargetUsd(swapUsd, slippageBps);
+    const targetQuantity = targetDebtUsd / targetPrice;
     const targetExisting = borrows.find((b) => b.asset.symbol === targetSymbol);
     const existingTargetQty = targetExisting ? targetExisting.totalBorrows : 0;
     const clone = JSON.parse(JSON.stringify(workingData)) as AaveHealthFactorData;
@@ -1196,7 +1203,11 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     }
     const updated = updateDerivedHealthFactorData(clone, marketRefPrice);
     const liquidationScenario = getCalculatedLiquidationScenario(updated, marketRefPrice) ?? [];
-    return { healthFactor: updated.healthFactor ?? null, liquidationScenario };
+    return {
+      healthFactor: updated.healthFactor ?? null,
+      availableBorrowsUSD: Math.max(updated.availableBorrowsUSD ?? 0, 0),
+      liquidationScenario,
+    };
   };
 
   /** Projected health factor and liquidation scenario after swap collateral (no state change). */

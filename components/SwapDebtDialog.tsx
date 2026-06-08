@@ -1,6 +1,7 @@
 import * as React from "react";
 import { t, Trans } from "@lingui/macro";
 import {
+  Alert,
   Button,
   Group,
   Modal,
@@ -16,6 +17,7 @@ import {
   isWorkingDataEmodeActive,
   isEmodeAllowedDebtSymbol,
   getSwapFeeBreakdown,
+  getDebtSwapTargetUsd,
   fetchSlippageToleranceBps,
   DEFAULT_SLIPPAGE_BPS,
   markets,
@@ -136,16 +138,22 @@ export default function SwapDebtDialog() {
       : 0;
   const feeBreakdown =
     swapUsd > 0 ? getSwapFeeBreakdown(swapUsd, slippageBps) : null;
+  const targetDebtFromSwapUsd =
+    swapUsd > 0 ? getDebtSwapTargetUsd(swapUsd, slippageBps) : 0;
   const sourceDebtRemaining =
     sourceItem && sourceSymbol
       ? sourceItem.totalBorrows * (1 - percentage)
       : 0;
   const targetDebtAfter =
-    feeBreakdown && targetAsset
+    targetAsset
       ? (targetItem?.totalBorrows ?? 0) +
-        feeBreakdown.receiveUsd / (targetAsset.priceInUSD || 1)
+        targetDebtFromSwapUsd / (targetAsset.priceInUSD || 1)
       : targetItem?.totalBorrows ?? 0;
   const currentHF = addressData?.[currentMarket]?.workingData?.healthFactor;
+  const currentAvailableBorrowsUSD = Math.max(
+    addressData?.[currentMarket]?.workingData?.availableBorrowsUSD ?? 0,
+    0,
+  );
   const projected =
     sourceSymbol && targetSymbol && feeBreakdown
       ? getProjectedHealthFactorAfterSwapDebt(sourceSymbol, targetSymbol, percentage, slippageBps)
@@ -153,6 +161,14 @@ export default function SwapDebtDialog() {
   const formatHF = (hf: number | undefined | null) =>
     hf == null || hf < 0 ? "—" : hf === Infinity ? "∞" : hf.toFixed(2);
   const liquidationScenario = projected?.liquidationScenario ?? [];
+  const projectedAvailableBorrowsUSD = projected?.availableBorrowsUSD ?? null;
+  const noBorrowHeadroomAfterSwap =
+    projectedAvailableBorrowsUSD != null && projectedAvailableBorrowsUSD <= 0;
+  const formatUsd = (value: number) =>
+    value.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
 
   return (
     <>
@@ -239,15 +255,20 @@ export default function SwapDebtDialog() {
                 <Trans>Slippage ({((feeBreakdown.slippageBps ?? DEFAULT_SLIPPAGE_BPS) / 100).toFixed(2)}%)</Trans>: ${feeBreakdown.slippageUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
               <Text size="xs" weight={500} mt="xs">
-                <Trans>Total fees + slippage</Trans>: ${(feeBreakdown.totalFeeUsd + feeBreakdown.slippageUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <Trans>Total fees + slippage (added to debt)</Trans>: ${(feeBreakdown.totalFeeUsd + feeBreakdown.slippageUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
               <Text size="xs" weight={500} mt={4}>
-                <Trans>You receive (after fees and slippage)</Trans>: ${feeBreakdown.receiveUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <Trans>New target debt from swap (par + fees)</Trans>: ${targetDebtFromSwapUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>
               <Text size="xs" weight={500} mt="xs">
                 <Trans>Estimated remaining debt</Trans>: {sourceSymbol} {sourceDebtRemaining.toLocaleString(undefined, { maximumFractionDigits: 6 })}
                 {targetSymbol && `, ${targetSymbol} ${targetDebtAfter.toLocaleString(undefined, { maximumFractionDigits: 6 })}`}
               </Text>
+              {projected != null && projectedAvailableBorrowsUSD != null && (
+                <Text size="xs" weight={500} mt="xs">
+                  <Trans>Estimated available to borrow</Trans>: ${formatUsd(currentAvailableBorrowsUSD)} → ${formatUsd(projectedAvailableBorrowsUSD)}
+                </Text>
+              )}
               {projected != null && (
                 <Text size="xs" weight={500} mt="xs">
                   <Trans>Expected health factor</Trans>: {formatHF(currentHF)} → {formatHF(projected.healthFactor)}
@@ -262,6 +283,14 @@ export default function SwapDebtDialog() {
                 </Text>
               )}
             </Paper>
+          )}
+
+          {noBorrowHeadroomAfterSwap && (
+            <Alert color="yellow" title={t`No borrow headroom after swap`}>
+              <Trans>
+                Aave requires some remaining borrow capacity after a debt swap. This swap would leave $0 available to borrow on-chain. You can still apply the simulation here, but the real transaction may fail or need a smaller swap amount.
+              </Trans>
+            </Alert>
           )}
 
           <Group position="right" mt="md">
