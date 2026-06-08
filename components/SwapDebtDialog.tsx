@@ -2,6 +2,7 @@ import * as React from "react";
 import { t, Trans } from "@lingui/macro";
 import {
   Alert,
+  ActionIcon,
   Button,
   Group,
   Modal,
@@ -9,7 +10,9 @@ import {
   Select,
   Text,
   Stack,
+  Tooltip,
 } from "@mantine/core";
+import { FiRefreshCw } from "react-icons/fi";
 import {
   useAaveData,
   BorrowedAssetDataItem,
@@ -18,7 +21,7 @@ import {
   isEmodeAllowedDebtSymbol,
   getDebtSwapTargetUsd,
   getDebtSwapSlippageUsd,
-  fetchSlippageToleranceBps,
+  useSwapSlippageBps,
   DEFAULT_SLIPPAGE_BPS,
   markets,
 } from "../hooks/useAaveData";
@@ -35,43 +38,38 @@ export default function SwapDebtDialog() {
   const [sourceSymbol, setSourceSymbol] = React.useState<string | null>(null);
   const [targetSymbol, setTargetSymbol] = React.useState<string | null>(null);
   const [percentage, setPercentage] = React.useState<number>(1);
-  const [slippageBps, setSlippageBps] = React.useState<number | null>(null);
 
   const {
     addressData,
     currentMarket,
     simulateSwapDebt,
     getProjectedHealthFactorAfterSwapDebt,
+    refreshCurrentMarketData,
+    isRefreshActive,
   } = useAaveData("");
 
   const availableAssets = addressData?.[currentMarket]?.availableAssets ?? [];
   const market = markets.find((m) => m.id === currentMarket);
   const workingData = addressData?.[currentMarket]?.workingData;
+  const marketLastFetched = addressData?.[currentMarket]?.lastFetched ?? 0;
   const emodeActive = isWorkingDataEmodeActive(workingData);
 
-  React.useEffect(() => {
-    if (!sourceSymbol || !targetSymbol || !market) {
-      setSlippageBps(null);
-      return;
-    }
-    const assetA = availableAssets.find((a) => a.symbol === sourceSymbol);
-    const assetB = availableAssets.find((a) => a.symbol === targetSymbol);
-    if (!assetA?.underlyingAsset || !assetB?.underlyingAsset) {
-      setSlippageBps(DEFAULT_SLIPPAGE_BPS);
-      return;
-    }
-    let cancelled = false;
-    fetchSlippageToleranceBps(
-      Number(market.chainId),
-      assetA.underlyingAsset,
-      assetB.underlyingAsset,
-    ).then((bps) => {
-      if (!cancelled) setSlippageBps(bps ?? DEFAULT_SLIPPAGE_BPS);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [sourceSymbol, targetSymbol, currentMarket, market?.chainId]);
+  const sourceAsset = availableAssets.find((a) => a.symbol === sourceSymbol);
+  const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
+  const slippageEnabled = open && !!sourceSymbol && !!targetSymbol;
+  const {
+    slippageBps,
+    lastUpdated: slippageLastUpdated,
+    isRefreshing: isSlippageRefreshing,
+    refreshSlippage,
+  } = useSwapSlippageBps(
+    slippageEnabled,
+    market ? Number(market.chainId) : undefined,
+    sourceAsset?.underlyingAsset,
+    targetAsset?.underlyingAsset,
+    refreshCurrentMarketData,
+    { autoRefreshMarketData: isRefreshActive },
+  );
 
   React.useEffect(() => {
     if (!emodeActive) return;
@@ -130,7 +128,6 @@ export default function SwapDebtDialog() {
 
   const sourceItem = borrows.find((b) => b.asset.symbol === sourceSymbol);
   const targetItem = borrows.find((b) => b.asset.symbol === targetSymbol);
-  const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
   const swapUsd =
     sourceItem && sourceSymbol
       ? sourceItem.totalBorrows * sourceItem.asset.priceInUSD * percentage
@@ -169,6 +166,46 @@ export default function SwapDebtDialog() {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
+  const swapAssetSymbols = [sourceSymbol, targetSymbol].filter(
+    (sym, i, arr): sym is string => !!sym && arr.indexOf(sym) === i,
+  );
+  const oraclePriceLine = swapAssetSymbols
+    .map((sym) => {
+      const oracle = availableAssets.find((a) => a.symbol === sym)?.priceInUSD;
+      return oracle != null ? `${sym} $${formatUsd(oracle)}` : null;
+    })
+    .filter(Boolean)
+    .join(", ");
+  const simulationPriceDiffers = (symbol: string | null) => {
+    if (!symbol || isRefreshActive) return false;
+    const workingItem = borrows.find((b) => b.asset.symbol === symbol);
+    const oracle = availableAssets.find((a) => a.symbol === symbol)?.priceInUSD;
+    const working = workingItem?.asset.priceInUSD;
+    return (
+      oracle != null &&
+      working != null &&
+      Math.abs(oracle - working) > 0.01
+    );
+  };
+  const simulationPriceLine = swapAssetSymbols
+    .filter((sym) => simulationPriceDiffers(sym))
+    .map((sym) => {
+      const working = borrows.find((b) => b.asset.symbol === sym)?.asset.priceInUSD;
+      return working != null ? `${sym} $${formatUsd(working)}` : null;
+    })
+    .filter(Boolean)
+    .join(", ");
+  const quoteFreshnessMs = Math.max(slippageLastUpdated ?? 0, marketLastFetched);
+  const [, setQuoteAgeTick] = React.useState(0);
+  React.useEffect(() => {
+    if (!open || !sourceSymbol || !targetSymbol) return;
+    const id = setInterval(() => setQuoteAgeTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [open, sourceSymbol, targetSymbol]);
+  const quoteAgeSec =
+    quoteFreshnessMs > 0
+      ? Math.max(0, Math.floor((Date.now() - quoteFreshnessMs) / 1000))
+      : null;
 
   return (
     <>
@@ -237,11 +274,49 @@ export default function SwapDebtDialog() {
             </Group>
           </div>
 
-          {swapUsd > 0 && (
+          {sourceSymbol && targetSymbol && (
             <Paper p="sm" withBorder radius="sm">
-              <Text size="sm" weight={600} mb="xs">
-                <Trans>Swap summary</Trans>
-              </Text>
+              <Group position="apart" mb="xs" noWrap>
+                <Text size="sm" weight={600}>
+                  <Trans>Swap summary</Trans>
+                </Text>
+                <Tooltip label={t`Refresh prices and quote`}>
+                  <ActionIcon
+                    size="sm"
+                    variant="subtle"
+                    onClick={() => refreshSlippage()}
+                    loading={isSlippageRefreshing}
+                    aria-label={t`Refresh prices and quote`}
+                  >
+                    <FiRefreshCw size={14} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+              {quoteAgeSec != null && (
+                <Text size="xs" color="dimmed" mb="xs">
+                  {isSlippageRefreshing ? (
+                    <Trans>Updating quote…</Trans>
+                  ) : isRefreshActive ? (
+                    <Trans>Prices and quote updated {quoteAgeSec}s ago (auto-refreshes every 30s)</Trans>
+                  ) : (
+                    <Trans>
+                      Using manual prices. Slippage updated {quoteAgeSec}s ago — click refresh for live oracle prices.
+                    </Trans>
+                  )}
+                </Text>
+              )}
+              {oraclePriceLine && (
+                <Text size="xs" weight={500} mb="xs">
+                  <Trans>Current market price</Trans>: {oraclePriceLine}
+                </Text>
+              )}
+              {simulationPriceLine && (
+                <Text size="xs" color="dimmed" mb="xs">
+                  <Trans>Simulation price (used for swap)</Trans>: {simulationPriceLine}
+                </Text>
+              )}
+              {swapUsd > 0 && (
+                <>
               <Text size="xs" color="dimmed">
                 <Trans>Swap value (USD par)</Trans>: ${formatUsd(swapUsd)}
               </Text>
@@ -275,6 +350,8 @@ export default function SwapDebtDialog() {
                     .map((a) => `${a.symbol} $${a.priceInUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
                     .join(", ")}
                 </Text>
+              )}
+                </>
               )}
             </Paper>
           )}

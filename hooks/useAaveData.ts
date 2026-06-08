@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useHookstate, State } from "@hookstate/core";
 import * as pools from "@bgd-labs/aave-address-book";
 
@@ -380,6 +380,87 @@ export async function fetchSlippageToleranceBps(
   }
 }
 
+/** How often to re-fetch CoW slippage while a swap dialog is open (matches market refresh). */
+export const SWAP_SLIPPAGE_REFRESH_MS = 30_000;
+
+/** Poll CoW slippage and optionally refresh market oracle prices while a swap dialog is open. */
+export function useSwapSlippageBps(
+  enabled: boolean,
+  chainId: number | undefined,
+  tokenA: string | undefined,
+  tokenB: string | undefined,
+  refreshMarketData?: () => Promise<void>,
+  options?: {
+    /** When false, auto-refresh only updates slippage; manual refresh still fetches market prices. */
+    autoRefreshMarketData?: boolean;
+    refreshIntervalMs?: number;
+  },
+) {
+  const autoRefreshMarketData = options?.autoRefreshMarketData ?? true;
+  const refreshIntervalMs = options?.refreshIntervalMs ?? SWAP_SLIPPAGE_REFRESH_MS;
+  const [slippageBps, setSlippageBps] = useState<number | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshMarketRef = useRef(refreshMarketData);
+  refreshMarketRef.current = refreshMarketData;
+  const autoRefreshMarketRef = useRef(autoRefreshMarketData);
+  autoRefreshMarketRef.current = autoRefreshMarketData;
+
+  const refreshQuote = useCallback(async (includeMarketRefresh: boolean) => {
+    if (!enabled) {
+      setSlippageBps(null);
+      setLastUpdated(null);
+      return;
+    }
+    setIsRefreshing(true);
+    try {
+      const marketRefresh =
+        includeMarketRefresh && refreshMarketRef.current
+          ? refreshMarketRef.current()
+          : Promise.resolve();
+      const slippageRefresh =
+        !chainId || !tokenA || !tokenB
+          ? Promise.resolve(DEFAULT_SLIPPAGE_BPS)
+          : fetchSlippageToleranceBps(chainId, tokenA, tokenB).then(
+              (bps) => bps ?? DEFAULT_SLIPPAGE_BPS,
+            );
+      const [, bps] = await Promise.all([marketRefresh, slippageRefresh]);
+      setSlippageBps(bps);
+      setLastUpdated(Date.now());
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [enabled, chainId, tokenA, tokenB]);
+
+  const refreshSlippageAuto = useCallback(
+    () => refreshQuote(autoRefreshMarketRef.current),
+    [refreshQuote],
+  );
+  const refreshSlippageManual = useCallback(
+    () => refreshQuote(true),
+    [refreshQuote],
+  );
+
+  useEffect(() => {
+    if (!enabled) {
+      setSlippageBps(null);
+      setLastUpdated(null);
+      return;
+    }
+    refreshSlippageAuto();
+    if (refreshIntervalMs <= 0) return;
+    const intervalId = setInterval(refreshSlippageAuto, refreshIntervalMs);
+    return () => clearInterval(intervalId);
+  }, [enabled, refreshSlippageAuto, refreshIntervalMs]);
+
+  return {
+    slippageBps,
+    lastUpdated,
+    isRefreshing,
+    refreshSlippage: refreshSlippageManual,
+  };
+}
+
 function getSwapFeeMultiplierForSlippageBps(slippageBps: number) {
   return (
     (1 - (SWAP_FEE_BPS + EXECUTION_FEE_BPS) / 10000) *
@@ -613,6 +694,20 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     (updatedWorking as AaveHealthFactorData & { liquidationScenario?: AssetDetails[] }).liquidationScenario =
       getCalculatedLiquidationScenario(updatedWorking, marketRefPrice);
     store.addressData.nested(address)[marketId].workingData.set(updatedWorking);
+  };
+
+  /** Refresh oracle prices and derived values for the current market (preserves simulation amounts). */
+  const refreshCurrentMarketData = async () => {
+    const marketConfig = markets.find((m) => m.id === currentMarket);
+    if (!marketConfig || !address) return;
+    try {
+      const hfData = await getAaveData(address, marketConfig);
+      applyRefreshPreservingWorkingData(currentMarket, hfData);
+    } catch (err) {
+      const message = normalizeRpcErrorMessage(err);
+      const marketEntry = store.addressData.nested(address)[currentMarket];
+      if (marketEntry?.fetchError != null) marketEntry.fetchError.set(message);
+    }
   };
 
   // Refresh interval: only runs when isRefreshActive is true; shared so checkbox and interval stay in sync.
@@ -1478,6 +1573,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     getProjectedHealthFactorAfterBorrow,
     applyLoopingStateToPosition,
     setSimulatedEmodeActive,
+    refreshCurrentMarketData,
   };
 }
 
