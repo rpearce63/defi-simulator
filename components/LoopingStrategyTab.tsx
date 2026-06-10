@@ -40,10 +40,10 @@ export default function LoopingStrategyTab({ onApplyToPosition }: LoopingStrateg
   const borrows = addressData?.[currentMarket]?.workingData?.userBorrowsData ?? [];
 
   const [useCurrentPosition, setUseCurrentPosition] = React.useState(true);
-  const [initialCbBTC, setInitialCbBTC] = React.useState<number | string>("");
-  const [initialUSDC, setInitialUSDC] = React.useState<number | string>("");
+  const [initialCbBTC, setInitialCbBTC] = React.useState<number | "">("");
+  const [initialUSDC, setInitialUSDC] = React.useState<number | "">("");
   const [borrowMode, setBorrowMode] = React.useState<BorrowMode>("fixed");
-  const [borrowPerLoopUSD, setBorrowPerLoopUSD] = React.useState<number | string>("");
+  const [borrowPerLoopUSD, setBorrowPerLoopUSD] = React.useState<number | "">("");
   const [numLoops, setNumLoops] = React.useState(3);
   const [constraintMode, setConstraintMode] = React.useState<ConstraintMode>("minHF");
   const [minHF, setMinHF] = React.useState(1.1);
