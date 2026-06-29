@@ -24,6 +24,8 @@ import {
   useSwapSlippageBps,
   DEFAULT_SLIPPAGE_BPS,
   markets,
+  getSimulationAssetPriceInUsd,
+  getMarketAssetPriceInUsd,
 } from "../hooks/useAaveData";
 
 const SWAP_PERCENTAGES = [
@@ -90,6 +92,15 @@ export default function SwapDebtDialog() {
   const borrows = [
     ...(addressData?.[currentMarket]?.workingData?.userBorrowsData ?? []),
   ] as BorrowedAssetDataItem[];
+  const reserves = workingData?.userReservesData ?? [];
+  const useManualPrices = !isRefreshActive;
+  const priceFor = (symbol: string) =>
+    getSimulationAssetPriceInUsd(
+      symbol,
+      workingData,
+      availableAssets,
+      useManualPrices,
+    );
   const sourceOptions = borrows
     .filter((b) => b.totalBorrows > 0)
     .filter((b) => !emodeActive || isEmodeAllowedDebtSymbol(b.asset.symbol))
@@ -130,7 +141,7 @@ export default function SwapDebtDialog() {
   const targetItem = borrows.find((b) => b.asset.symbol === targetSymbol);
   const swapUsd =
     sourceItem && sourceSymbol
-      ? sourceItem.totalBorrows * sourceItem.asset.priceInUSD * percentage
+      ? sourceItem.totalBorrows * priceFor(sourceSymbol) * percentage
       : 0;
   const slippageUsd =
     swapUsd > 0 ? getDebtSwapSlippageUsd(swapUsd, slippageBps) : 0;
@@ -142,9 +153,9 @@ export default function SwapDebtDialog() {
       ? sourceItem.totalBorrows * (1 - percentage)
       : 0;
   const targetDebtAfter =
-    targetAsset
+    targetSymbol
       ? (targetItem?.totalBorrows ?? 0) +
-        targetDebtFromSwapUsd / (targetAsset.priceInUSD || 1)
+        targetDebtFromSwapUsd / priceFor(targetSymbol)
       : targetItem?.totalBorrows ?? 0;
   const currentHF = addressData?.[currentMarket]?.workingData?.healthFactor;
   const currentAvailableBorrowsUSD = Math.max(
@@ -171,18 +182,21 @@ export default function SwapDebtDialog() {
   );
   const oraclePriceLine = swapAssetSymbols
     .map((sym) => {
-      const oracle = availableAssets.find((a) => a.symbol === sym)?.priceInUSD;
-      return oracle != null ? `${sym} $${formatUsd(oracle)}` : null;
+      const oracle = getMarketAssetPriceInUsd(sym, availableAssets);
+      return `${sym} $${formatUsd(oracle)}`;
     })
-    .filter(Boolean)
     .join(", ");
+  const workingPriceForSymbol = (symbol: string) => {
+    const fromBorrow = borrows.find((b) => b.asset.symbol === symbol)?.asset
+      .priceInUSD;
+    if (fromBorrow != null) return fromBorrow;
+    return reserves.find((r) => r.asset.symbol === symbol)?.asset.priceInUSD;
+  };
   const simulationPriceDiffers = (symbol: string | null) => {
     if (!symbol || isRefreshActive) return false;
-    const workingItem = borrows.find((b) => b.asset.symbol === symbol);
-    const oracle = availableAssets.find((a) => a.symbol === symbol)?.priceInUSD;
-    const working = workingItem?.asset.priceInUSD;
+    const oracle = getMarketAssetPriceInUsd(symbol, availableAssets);
+    const working = workingPriceForSymbol(symbol);
     return (
-      oracle != null &&
       working != null &&
       Math.abs(oracle - working) > 0.01
     );
@@ -190,7 +204,7 @@ export default function SwapDebtDialog() {
   const simulationPriceLine = swapAssetSymbols
     .filter((sym) => simulationPriceDiffers(sym))
     .map((sym) => {
-      const working = borrows.find((b) => b.asset.symbol === sym)?.asset.priceInUSD;
+      const working = workingPriceForSymbol(sym);
       return working != null ? `${sym} $${formatUsd(working)}` : null;
     })
     .filter(Boolean)

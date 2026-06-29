@@ -19,6 +19,8 @@ import {
   fetchSlippageToleranceBps,
   DEFAULT_SLIPPAGE_BPS,
   markets,
+  getSimulationAssetPriceInUsd,
+  getMarketAssetPriceInUsd,
 } from "../hooks/useAaveData";
 
 const SWAP_PERCENTAGES = [
@@ -42,10 +44,20 @@ export default function SwapCollateralDialog() {
     currentMarket,
     simulateSwapCollateral,
     getProjectedHealthFactorAfterSwapCollateral,
+    isRefreshActive,
   } = useAaveData("");
 
   const availableAssets = addressData?.[currentMarket]?.availableAssets ?? [];
+  const workingData = addressData?.[currentMarket]?.workingData;
   const market = markets.find((m) => m.id === currentMarket);
+  const useManualPrices = !isRefreshActive;
+  const priceFor = (symbol: string) =>
+    getSimulationAssetPriceInUsd(
+      symbol,
+      workingData,
+      availableAssets,
+      useManualPrices,
+    );
 
   React.useEffect(() => {
     if (!sourceSymbol || !targetSymbol || !market) {
@@ -90,7 +102,6 @@ export default function SwapCollateralDialog() {
 
   const sourceItem = reserves.find((r) => r.asset.symbol === sourceSymbol);
   const targetItem = reserves.find((r) => r.asset.symbol === targetSymbol);
-  const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
 
   const sourceAmountNum =
     typeof sourceAmount === "number"
@@ -104,7 +115,7 @@ export default function SwapCollateralDialog() {
   const useReceiveUsd = receiveUsdNum != null && receiveUsdNum > 0;
   const useAmount = useSourceAmount || useReceiveUsd;
   const maxSwapUsd = sourceItem
-    ? sourceItem.underlyingBalance * (sourceItem.asset.priceInUSD || 1)
+    ? sourceItem.underlyingBalance * priceFor(sourceSymbol!)
     : 0;
   // When using receive-USD, user enters desired net USD (after fees). Work backwards to source amount.
   const requiredSwapUsd =
@@ -119,12 +130,12 @@ export default function SwapCollateralDialog() {
       ? useSourceAmount
         ? Math.min(sourceAmountNum!, sourceItem.underlyingBalance)
         : useReceiveUsd
-          ? requiredSwapUsd / (sourceItem.asset.priceInUSD || 1)
+          ? requiredSwapUsd / priceFor(sourceSymbol!)
           : sourceItem.underlyingBalance * percentage
       : 0;
   const swapUsd =
     sourceItem && sourceSymbol
-      ? sourceUnitsToSwap * sourceItem.asset.priceInUSD
+      ? sourceUnitsToSwap * priceFor(sourceSymbol)
       : 0;
   const maxNetReceiveUsd =
     maxSwapUsd > 0
@@ -166,9 +177,9 @@ export default function SwapCollateralDialog() {
       ? sourceItem.underlyingBalance - sourceUnitsToSwap
       : 0;
   const targetCollateralAfter =
-    feeBreakdown && targetAsset
+    feeBreakdown && targetSymbol
       ? (targetItem?.underlyingBalance ?? 0) +
-        feeBreakdown.receiveUsd / (targetAsset.priceInUSD || 1)
+        feeBreakdown.receiveUsd / priceFor(targetSymbol)
       : targetItem?.underlyingBalance ?? 0;
   const currentHF = addressData?.[currentMarket]?.workingData?.healthFactor;
   const projected =
@@ -184,6 +195,35 @@ export default function SwapCollateralDialog() {
   const formatHF = (hf: number | undefined | null) =>
     hf == null || hf < 0 ? "—" : hf === Infinity ? "∞" : hf.toFixed(2);
   const liquidationScenario = projected?.liquidationScenario ?? [];
+  const formatUsd = (value: number) =>
+    value.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  const swapAssetSymbols = [sourceSymbol, targetSymbol].filter(
+    (sym, i, arr): sym is string => !!sym && arr.indexOf(sym) === i,
+  );
+  const workingPriceForSymbol = (symbol: string) => {
+    const fromReserve = reserves.find((r) => r.asset.symbol === symbol)?.asset
+      .priceInUSD;
+    if (fromReserve != null) return fromReserve;
+    return workingData?.userBorrowsData?.find((b) => b.asset.symbol === symbol)
+      ?.asset.priceInUSD;
+  };
+  const simulationPriceDiffers = (symbol: string) =>
+    useManualPrices &&
+    workingPriceForSymbol(symbol) != null &&
+    Math.abs(
+      getMarketAssetPriceInUsd(symbol, availableAssets) -
+        workingPriceForSymbol(symbol)!,
+    ) > 0.01;
+  const oraclePriceLine = swapAssetSymbols
+    .map((sym) => `${sym} $${formatUsd(getMarketAssetPriceInUsd(sym, availableAssets))}`)
+    .join(", ");
+  const simulationPriceLine = swapAssetSymbols
+    .filter((sym) => simulationPriceDiffers(sym))
+    .map((sym) => `${sym} $${formatUsd(priceFor(sym))}`)
+    .join(", ");
 
   return (
     <>
@@ -295,6 +335,21 @@ export default function SwapCollateralDialog() {
               <Text size="sm" weight={600} mb="xs">
                 <Trans>Estimated fees</Trans>
               </Text>
+              {!isRefreshActive && (
+                <Text size="xs" color="dimmed" mb="xs">
+                  <Trans>Using manual prices from the Position tab.</Trans>
+                </Text>
+              )}
+              {oraclePriceLine && (
+                <Text size="xs" weight={500} mb="xs">
+                  <Trans>Current market price</Trans>: {oraclePriceLine}
+                </Text>
+              )}
+              {simulationPriceLine && (
+                <Text size="xs" color="dimmed" mb="xs">
+                  <Trans>Simulation price (used for swap)</Trans>: {simulationPriceLine}
+                </Text>
+              )}
               <Text size="xs" color="dimmed">
                 <Trans>Swap value</Trans>: ${swapUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </Text>

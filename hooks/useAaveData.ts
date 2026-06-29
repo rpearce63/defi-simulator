@@ -1075,26 +1075,37 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     ) {
       return;
     }
-    const workingEmode = data?.[currentMarket]?.workingData as
+    const workingData = data?.[currentMarket]?.workingData as
       | AaveHealthFactorData
       | undefined;
     if (
-      isWorkingDataEmodeActive(workingEmode) &&
+      isWorkingDataEmodeActive(workingData) &&
       !isEmodeAllowedDebtSwap(sourceSymbol, targetSymbol)
     ) {
       return;
     }
-    const swapUsd =
-      sourceItem.totalBorrows * sourceItem.asset.priceInUSD * percentage;
     const availableAssets =
       data?.[currentMarket]?.availableAssets ?? [];
+    const useManualPrices = !isRefreshActive;
+    const sourcePrice = getSimulationAssetPriceInUsd(
+      sourceSymbol,
+      workingData,
+      availableAssets,
+      useManualPrices,
+    );
+    const swapUsd = sourceItem.totalBorrows * sourcePrice * percentage;
     const targetAsset = availableAssets.find(
       (a) => a.symbol === targetSymbol,
     );
     if (!targetAsset || !isBorrowableAsset(targetAsset)) {
       return;
     }
-    const targetPrice = targetAsset.priceInUSD || 1;
+    const targetPrice = getSimulationAssetPriceInUsd(
+      targetSymbol,
+      workingData,
+      availableAssets,
+      useManualPrices,
+    );
     const targetDebtUsd = getDebtSwapTargetUsd(swapUsd, slippageBps);
     const targetQuantity = targetDebtUsd / targetPrice;
     const targetExisting = borrows.find(
@@ -1136,20 +1147,35 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     ) {
       return;
     }
+    const workingData = data?.[currentMarket]?.workingData as
+      | AaveHealthFactorData
+      | undefined;
+    const availableAssets =
+      data?.[currentMarket]?.availableAssets ?? [];
+    const useManualPrices = !isRefreshActive;
+    const sourcePrice = getSimulationAssetPriceInUsd(
+      sourceSymbol,
+      workingData,
+      availableAssets,
+      useManualPrices,
+    );
     const sourceUnitsToSwap =
       swapAmount != null && swapAmount > 0
         ? Math.min(swapAmount, sourceItem.underlyingBalance)
         : sourceItem.underlyingBalance * percentage;
-    const swapUsd = sourceUnitsToSwap * sourceItem.asset.priceInUSD;
-    const availableAssets =
-      data?.[currentMarket]?.availableAssets ?? [];
+    const swapUsd = sourceUnitsToSwap * sourcePrice;
     const targetAsset = availableAssets.find(
       (a) => a.symbol === targetSymbol,
     );
     if (!targetAsset || !isSuppliableAsset(targetAsset)) {
       return;
     }
-    const targetPrice = targetAsset.priceInUSD || 1;
+    const targetPrice = getSimulationAssetPriceInUsd(
+      targetSymbol,
+      workingData,
+      availableAssets,
+      useManualPrices,
+    );
     const targetQuantity = (swapUsd * mult) / targetPrice;
     const targetExisting = reserves.find(
       (r) => r.asset.symbol === targetSymbol,
@@ -1281,11 +1307,21 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     ) {
       return { healthFactor: null, availableBorrowsUSD: null, liquidationScenario: [] };
     }
-    const swapUsd = sourceItem.totalBorrows * sourceItem.asset.priceInUSD * percentage;
+    const swapUsd = sourceItem.totalBorrows * getSimulationAssetPriceInUsd(
+      sourceSymbol,
+      workingData,
+      availableAssets,
+      !isRefreshActive,
+    ) * percentage;
     const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
     if (!targetAsset || !isBorrowableAsset(targetAsset))
       return { healthFactor: null, availableBorrowsUSD: null, liquidationScenario: [] };
-    const targetPrice = targetAsset.priceInUSD || 1;
+    const targetPrice = getSimulationAssetPriceInUsd(
+      targetSymbol,
+      workingData,
+      availableAssets,
+      !isRefreshActive,
+    );
     const targetDebtUsd = getDebtSwapTargetUsd(swapUsd, slippageBps);
     const targetQuantity = targetDebtUsd / targetPrice;
     const targetExisting = borrows.find((b) => b.asset.symbol === targetSymbol);
@@ -1299,7 +1335,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
       cloneTarget.totalBorrows = existingTargetQty + targetQuantity;
     } else {
       cloneBorrows.push({
-        asset: { ...targetAsset, isNewlyAddedBySimUser: true },
+        asset: { ...targetAsset, priceInUSD: targetPrice, isNewlyAddedBySimUser: true },
         totalBorrows: existingTargetQty + targetQuantity,
         totalBorrowsUSD: 0,
         totalBorrowsMarketReferenceCurrency: 0,
@@ -1338,11 +1374,21 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
       swapAmount != null && swapAmount > 0
         ? Math.min(swapAmount, sourceItem.underlyingBalance)
         : sourceItem.underlyingBalance * percentage;
-    const swapUsd = sourceUnitsToSwap * sourceItem.asset.priceInUSD;
+    const swapUsd = sourceUnitsToSwap * getSimulationAssetPriceInUsd(
+      sourceSymbol,
+      workingData,
+      availableAssets,
+      !isRefreshActive,
+    );
     const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
     if (!targetAsset || !isSuppliableAsset(targetAsset))
       return { healthFactor: null, liquidationScenario: [] };
-    const targetPrice = targetAsset.priceInUSD || 1;
+    const targetPrice = getSimulationAssetPriceInUsd(
+      targetSymbol,
+      workingData,
+      availableAssets,
+      !isRefreshActive,
+    );
     const targetQuantity = (swapUsd * mult) / targetPrice;
     const targetExisting = reserves.find((r) => r.asset.symbol === targetSymbol);
     const existingTargetQty = targetExisting ? targetExisting.underlyingBalance : 0;
@@ -1355,7 +1401,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
       cloneTarget.underlyingBalance = existingTargetQty + targetQuantity;
     } else {
       cloneReserves.push({
-        asset: { ...targetAsset, isNewlyAddedBySimUser: true },
+        asset: { ...targetAsset, priceInUSD: targetPrice, isNewlyAddedBySimUser: true },
         underlyingBalance: existingTargetQty + targetQuantity,
         underlyingBalanceUSD: 0,
         underlyingBalanceMarketReferenceCurrency: 0,
@@ -1652,6 +1698,39 @@ export const isEmodeAllowedDebtSwap = (
 
 export const isSuppliableAsset = (asset: AssetDetails) => {
   return isActiveAsset(asset) && asset.usageAsCollateralEnabled;
+};
+
+/** Oracle price from the latest market fetch. */
+export const getMarketAssetPriceInUsd = (
+  symbol: string,
+  availableAssets: AssetDetails[],
+): number =>
+  availableAssets.find(
+    (a) => a.symbol.toUpperCase() === symbol.toUpperCase(),
+  )?.priceInUSD ?? 1;
+
+/** Price for swap simulation: Position tab (working) when refresh is off, else oracle. */
+export const getSimulationAssetPriceInUsd = (
+  symbol: string,
+  workingData: AaveHealthFactorData | undefined | null,
+  availableAssets: AssetDetails[],
+  useManualPrices: boolean,
+): number => {
+  const marketPrice = getMarketAssetPriceInUsd(symbol, availableAssets);
+  if (!useManualPrices) return marketPrice;
+
+  const upper = symbol.toUpperCase();
+  const fromReserve = workingData?.userReservesData?.find(
+    (r) => r.asset.symbol.toUpperCase() === upper,
+  )?.asset.priceInUSD;
+  if (fromReserve != null) return fromReserve;
+
+  const fromBorrow = workingData?.userBorrowsData?.find(
+    (b) => b.asset.symbol.toUpperCase() === upper,
+  )?.asset.priceInUSD;
+  if (fromBorrow != null) return fromBorrow;
+
+  return marketPrice;
 };
 
 export const isFlashloanableAsset = (asset: AssetDetails) => {
