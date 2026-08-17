@@ -53,6 +53,7 @@ import { ImmutableArray, ImmutableObject } from "@hookstate/core";
 import AddAssetDialog from "./AddAssetDialog";
 import SwapDebtDialog from "./SwapDebtDialog";
 import SwapCollateralDialog from "./SwapCollateralDialog";
+import BuyAndDepositDialog from "./BuyAndDepositDialog";
 import RepayDebtDialog from "./RepayDebtDialog";
 import BorrowMoreDialog from "./BorrowMoreDialog";
 import LoopingStrategyTab from "./LoopingStrategyTab";
@@ -1243,6 +1244,7 @@ const UserReserveAssetList = ({ summaryOffset }: UserReserveAssetListProps) => {
         </Title>
         <Group spacing="xs">
           <AddAssetDialog assetType="RESERVE" />
+          <BuyAndDepositDialog />
           {items.length > 0 && <SwapCollateralDialog />}
         </Group>
       </Container>

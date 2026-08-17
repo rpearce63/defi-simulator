@@ -1189,6 +1189,37 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     setReserveAssetQuantity(targetSymbol, existingTargetQty + targetQuantity);
   };
 
+  /** Spend wallet USDC to buy a token and deposit it as collateral (does not reduce Aave USDC). */
+  const simulateBuyAndDepositCollateral = (
+    targetSymbol: string,
+    usdcAmount: number,
+    slippageBps?: number | null,
+  ) => {
+    const workingData = data?.[currentMarket]?.workingData as
+      | AaveHealthFactorData
+      | undefined;
+    const availableAssets = data?.[currentMarket]?.availableAssets ?? [];
+    const quote = getBuyAndDepositQuote(
+      usdcAmount,
+      targetSymbol,
+      workingData,
+      availableAssets,
+      !isRefreshActive,
+      slippageBps,
+    );
+    if (!quote) return;
+    const reserves = workingData?.userReservesData ?? [];
+    const targetExisting = reserves.find(
+      (r) => r.asset.symbol === targetSymbol,
+    );
+    const existingQty = targetExisting?.underlyingBalance ?? 0;
+    if (!targetExisting) addReserveAsset(targetSymbol);
+    setReserveAssetQuantity(targetSymbol, existingQty + quote.targetQuantity);
+    if (quote.targetAsset.usageAsCollateralEnabled) {
+      setUseReserveAssetAsCollateral(targetSymbol, true);
+    }
+  };
+
   /**
    * Simulate repaying debt: either by a manual amount (in debt asset units) or by
    * "selling" a percentage of collateral (same fee + slippage as swaps). Turns off auto-refresh.
@@ -1413,6 +1444,57 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     return { healthFactor: updated.healthFactor ?? null, liquidationScenario };
   };
 
+  /** Projected health factor after spending wallet USDC to buy and deposit collateral. */
+  const getProjectedHealthFactorAfterBuyAndDeposit = (
+    targetSymbol: string,
+    usdcAmount: number,
+    slippageBps?: number | null,
+  ): { healthFactor: number | null; liquidationScenario: AssetDetails[] } => {
+    const marketData = data?.[currentMarket];
+    const workingData = marketData?.workingData as AaveHealthFactorData | undefined;
+    const availableAssets = marketData?.availableAssets ?? [];
+    const marketRefPrice = marketData?.marketReferenceCurrencyPriceInUSD ?? 1;
+    if (!workingData) return { healthFactor: null, liquidationScenario: [] };
+    const quote = getBuyAndDepositQuote(
+      usdcAmount,
+      targetSymbol,
+      workingData,
+      availableAssets,
+      !isRefreshActive,
+      slippageBps,
+    );
+    if (!quote) return { healthFactor: null, liquidationScenario: [] };
+    const clone = JSON.parse(JSON.stringify(workingData)) as AaveHealthFactorData;
+    const cloneTarget = clone.userReservesData.find(
+      (r) => r.asset.symbol === targetSymbol,
+    );
+    const newQty =
+      (cloneTarget?.underlyingBalance ?? 0) + quote.targetQuantity;
+    if (cloneTarget) {
+      cloneTarget.underlyingBalance = newQty;
+      if (quote.targetAsset.usageAsCollateralEnabled) {
+        cloneTarget.usageAsCollateralEnabledOnUser = true;
+      }
+    } else {
+      clone.userReservesData.push({
+        asset: {
+          ...quote.targetAsset,
+          priceInUSD: quote.targetPrice,
+          isNewlyAddedBySimUser: true,
+        },
+        underlyingBalance: newQty,
+        underlyingBalanceUSD: 0,
+        underlyingBalanceMarketReferenceCurrency: 0,
+        usageAsCollateralEnabledOnUser:
+          quote.targetAsset.usageAsCollateralEnabled ?? false,
+      });
+    }
+    const updated = updateDerivedHealthFactorData(clone, marketRefPrice);
+    const liquidationScenario =
+      getCalculatedLiquidationScenario(updated, marketRefPrice) ?? [];
+    return { healthFactor: updated.healthFactor ?? null, liquidationScenario };
+  };
+
   /** Projected health factor and liquidation scenario after repay (no state change). */
   const getProjectedHealthFactorAfterRepay = (params: {
     debtSymbol: string;
@@ -1612,9 +1694,11 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     isRefreshActive,
     simulateSwapDebt,
     simulateSwapCollateral,
+    simulateBuyAndDepositCollateral,
     simulateRepayDebt,
     getProjectedHealthFactorAfterSwapDebt,
     getProjectedHealthFactorAfterSwapCollateral,
+    getProjectedHealthFactorAfterBuyAndDeposit,
     getProjectedHealthFactorAfterRepay,
     getProjectedHealthFactorAfterBorrow,
     applyLoopingStateToPosition,
@@ -1731,6 +1815,60 @@ export const getSimulationAssetPriceInUsd = (
   if (fromBorrow != null) return fromBorrow;
 
   return marketPrice;
+};
+
+/** Wallet USDC source for buy-and-deposit simulations. */
+export const BUY_AND_DEPOSIT_SOURCE_SYMBOL = "USDC";
+
+export type BuyAndDepositQuote = {
+  sourceSymbol: string;
+  targetAsset: AssetDetails;
+  usdcPrice: number;
+  targetPrice: number;
+  spendUsd: number;
+  feeBreakdown: ReturnType<typeof getSwapFeeBreakdown>;
+  targetQuantity: number;
+};
+
+/** Quote for spending wallet USDC to buy a token (after swap fees + slippage). */
+export const getBuyAndDepositQuote = (
+  usdcAmount: number,
+  targetSymbol: string,
+  workingData: AaveHealthFactorData | undefined | null,
+  availableAssets: AssetDetails[],
+  useManualPrices: boolean,
+  slippageBps?: number | null,
+): BuyAndDepositQuote | null => {
+  if (!(usdcAmount > 0) || !targetSymbol) return null;
+  if (targetSymbol.toUpperCase() === BUY_AND_DEPOSIT_SOURCE_SYMBOL) return null;
+  const targetAsset = availableAssets.find((a) => a.symbol === targetSymbol);
+  if (!targetAsset || !isSuppliableAsset(targetAsset)) return null;
+  const usdcPrice = getSimulationAssetPriceInUsd(
+    BUY_AND_DEPOSIT_SOURCE_SYMBOL,
+    workingData,
+    availableAssets,
+    useManualPrices,
+  );
+  const targetPrice = getSimulationAssetPriceInUsd(
+    targetSymbol,
+    workingData,
+    availableAssets,
+    useManualPrices,
+  );
+  if (!(targetPrice > 0)) return null;
+  const spendUsd = usdcAmount * usdcPrice;
+  const feeBreakdown = getSwapFeeBreakdown(spendUsd, slippageBps);
+  const targetQuantity = feeBreakdown.receiveUsd / targetPrice;
+  if (!(targetQuantity > 0)) return null;
+  return {
+    sourceSymbol: BUY_AND_DEPOSIT_SOURCE_SYMBOL,
+    targetAsset,
+    usdcPrice,
+    targetPrice,
+    spendUsd,
+    feeBreakdown,
+    targetQuantity,
+  };
 };
 
 export const isFlashloanableAsset = (asset: AssetDetails) => {
