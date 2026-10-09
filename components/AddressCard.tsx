@@ -54,6 +54,7 @@ import AddAssetDialog from "./AddAssetDialog";
 import SwapDebtDialog from "./SwapDebtDialog";
 import SwapCollateralDialog from "./SwapCollateralDialog";
 import BuyAndDepositDialog from "./BuyAndDepositDialog";
+import SupplyMoreDialog from "./SupplyMoreDialog";
 import RepayDebtDialog from "./RepayDebtDialog";
 import BorrowMoreDialog from "./BorrowMoreDialog";
 import LoopingStrategyTab from "./LoopingStrategyTab";
@@ -1481,7 +1482,14 @@ const UserAssetItem = memo(
             <Divider orientation="vertical" variant="dotted" />
 
             {assetType === "RESERVE" ? (
-              <ReserveAssetDetailsDialog assetDetails={assetDetails} />
+              <>
+                <ReserveAssetDetailsDialog assetDetails={assetDetails} />
+                <SupplyMoreDialog
+                  symbol={assetSymbol}
+                  currentBalance={workingQuantity}
+                  priceInUSD={workingPrice}
+                />
+              </>
             ) : (
               <BorrowedAssetDetailsDialog
                 assetDetails={assetDetails}

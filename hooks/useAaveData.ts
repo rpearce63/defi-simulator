@@ -1618,6 +1618,48 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     return { healthFactor: updated.healthFactor ?? null, liquidationScenario };
   };
 
+  /** Projected health factor after adding collateral units (no state change). */
+  const getProjectedHealthFactorAfterSupply = (
+    symbol: string,
+    additionalUnits: number,
+  ): { healthFactor: number | null; liquidationScenario: AssetDetails[] } => {
+    const marketData = data?.[currentMarket];
+    const workingData = marketData?.workingData as AaveHealthFactorData | undefined;
+    const marketRefPrice = marketData?.marketReferenceCurrencyPriceInUSD ?? 1;
+    const availableAssets = marketData?.availableAssets ?? [];
+    if (!workingData || additionalUnits <= 0) {
+      return { healthFactor: null, liquidationScenario: [] };
+    }
+    const clone = JSON.parse(JSON.stringify(workingData)) as AaveHealthFactorData;
+    const existing = clone.userReservesData.find((r) => r.asset.symbol === symbol);
+    const price = getSimulationAssetPriceInUsd(
+      symbol,
+      workingData,
+      availableAssets,
+      !isRefreshActive,
+    );
+    if (existing) {
+      existing.underlyingBalance = existing.underlyingBalance + additionalUnits;
+      existing.asset.priceInUSD = price;
+    } else {
+      const asset = availableAssets.find((a) => a.symbol === symbol);
+      if (!asset || !isSuppliableAsset(asset)) {
+        return { healthFactor: null, liquidationScenario: [] };
+      }
+      clone.userReservesData.push({
+        asset: { ...asset, priceInUSD: price, isNewlyAddedBySimUser: true },
+        underlyingBalance: additionalUnits,
+        underlyingBalanceUSD: 0,
+        underlyingBalanceMarketReferenceCurrency: 0,
+        usageAsCollateralEnabledOnUser: asset.usageAsCollateralEnabled ?? false,
+      });
+    }
+    const updated = updateDerivedHealthFactorData(clone, marketRefPrice);
+    const liquidationScenario =
+      getCalculatedLiquidationScenario(updated, marketRefPrice) ?? [];
+    return { healthFactor: updated.healthFactor ?? null, liquidationScenario };
+  };
+
   /** Toggle simulated E-Mode for working position (0 = off). Uses chain category from fetched data when available; otherwise category 10 for cbBTC + USDC/GHO. */
   const setSimulatedEmodeActive = (active: boolean) => {
     const healthFactorItem = store.addressData.nested(address)?.[
@@ -1701,6 +1743,7 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     getProjectedHealthFactorAfterBuyAndDeposit,
     getProjectedHealthFactorAfterRepay,
     getProjectedHealthFactorAfterBorrow,
+    getProjectedHealthFactorAfterSupply,
     applyLoopingStateToPosition,
     setSimulatedEmodeActive,
     refreshCurrentMarketData,
