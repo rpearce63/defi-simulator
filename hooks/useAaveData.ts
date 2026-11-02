@@ -34,7 +34,18 @@ export type AaveHealthFactorData = {
   userBorrowsData: BorrowedAssetDataItem[];
   userEmodeCategoryId?: number;
   isInIsolationMode?: boolean;
+  /** Live E-Mode category limits, keyed by category id. Reserves no longer carry these. */
+  emodeCategories?: Record<number, EmodeCategoryConfig>;
   txHistory: TxHistory;
+};
+
+/** Collateral limits for one Aave E-Mode category, in basis points (10000 = 100%). */
+export type EmodeCategoryConfig = {
+  ltv: number;
+  liquidationThreshold: number;
+  isolated: boolean;
+  collateralSymbols: string[];
+  ltvzeroSymbols: string[];
 };
 
 export type TxHistory = {
@@ -533,8 +544,8 @@ function normalizeRpcErrorMessage(err: unknown): string {
   return "Failed to load data. Try again.";
 }
 
-/** Fallback E-Mode category when simulating on without chain data (cbBTC + USDC/GHO). */
-const SIMULATED_EMODE_FALLBACK_CATEGORY_ID = 10;
+/** Fallback E-Mode category when simulating on without chain data (cbBTC Stablecoins). */
+export const SIMULATED_EMODE_FALLBACK_CATEGORY_ID = 10;
 
 /** hook to fetch user aave data
  * @returns { currentAddress,
@@ -675,6 +686,9 @@ export function useAaveData(address: string, preventFetch: boolean = false) {
     const workingCopy = JSON.parse(
       JSON.stringify(existingWorking),
     ) as AaveHealthFactorData;
+    if (freshHfData.fetchedData?.emodeCategories) {
+      workingCopy.emodeCategories = freshHfData.fetchedData.emodeCategories;
+    }
     workingCopy.userReservesData?.forEach((item) => {
       const freshAsset = freshBySymbol[item.asset.symbol];
       if (freshAsset) {
@@ -2005,6 +2019,55 @@ export const getEligibleLiquidationScenarioReserves = (
  * @param hfData the healthFactorData to update
  * @returns hfData the updated healthFactorData
  */
+
+/**
+ * LTV and liquidation threshold for one collateral asset.
+ * When the user is in an E-Mode category, assets on that category's collateral
+ * bitmap use the category's current limits. Otherwise the reserve base limits apply.
+ */
+export const getReserveCollateralParams = (
+  asset: AssetDetails,
+  userEmodeCategoryId: number | undefined,
+  emodeCategories?: Record<number, EmodeCategoryConfig> | null,
+): { ltv: number; liquidationThreshold: number } => {
+  const categoryId = userEmodeCategoryId || 0;
+  const baseLtv = asset.baseLTVasCollateral || 0;
+  const baseLiquidationThreshold = asset.reserveLiquidationThreshold || 0;
+  const category = categoryId > 0 ? emodeCategories?.[categoryId] : undefined;
+
+  if (category) {
+    const symbol = (asset.symbol || "").toUpperCase();
+    const inCollateral = (category.collateralSymbols || []).some(
+      (entry) => entry.toUpperCase() === symbol,
+    );
+    if (inCollateral) {
+      const ltvZero = (category.ltvzeroSymbols || []).some(
+        (entry) => entry.toUpperCase() === symbol,
+      );
+      return {
+        ltv: ltvZero ? 0 : category.ltv || 0,
+        liquidationThreshold: category.liquidationThreshold || 0,
+      };
+    }
+    if (category.isolated) {
+      return { ltv: 0, liquidationThreshold: baseLiquidationThreshold };
+    }
+  }
+
+  const legacyEmode =
+    categoryId > 0 &&
+    !!asset.eModeCategoryId &&
+    asset.eModeCategoryId === categoryId;
+  if (legacyEmode) {
+    return {
+      ltv: asset.eModeLtv || 0,
+      liquidationThreshold: asset.eModeLiquidationThreshold || 0,
+    };
+  }
+
+  return { ltv: baseLtv, liquidationThreshold: baseLiquidationThreshold };
+};
+
 export const updateDerivedHealthFactorData = (
   data: AaveHealthFactorData,
   currentMarketReferenceCurrencyPriceInUSD: number,
@@ -2022,12 +2085,6 @@ export const updateDerivedHealthFactorData = (
   let weightedReservesETH: BigNumber = new BigNumber(0);
   let weightedLTVETH: BigNumber = new BigNumber(0);
   let totalBorrowsETH: BigNumber = new BigNumber(0);
-  const activeBorrowSymbols = data.userBorrowsData
-    .filter((b) => b.totalBorrows > 0)
-    .map((b) => (b.asset.symbol || "").toUpperCase());
-  const hasOnlyUsdcOrGhoDebt =
-    activeBorrowSymbols.length > 0 &&
-    activeBorrowSymbols.every((s) => s === "USDC" || s === "GHO");
 
   data.userReservesData.forEach((reserveItem) => {
     const underlyingBalance: BigNumber = new BigNumber(
@@ -2081,23 +2138,11 @@ export const updateDerivedHealthFactorData = (
         updatedUnderlyingBalanceMarketReferenceCurrency,
       );
 
-      const isEmode: boolean =
-        !!reserveItem.asset.eModeCategoryId &&
-        reserveItem.asset.eModeCategoryId === data.userEmodeCategoryId;
-      const applyManualEmode80Ltv =
-        (data.userEmodeCategoryId || 0) > 0 &&
-        (reserveItem.asset.symbol || "").toUpperCase() === "CBBTC" &&
-        hasOnlyUsdcOrGhoDebt;
-      const lt: number = applyManualEmode80Ltv
-        ? 8300
-        : isEmode
-          ? reserveItem.asset.eModeLiquidationThreshold || 0
-          : reserveItem.asset.reserveLiquidationThreshold || 0;
-      const ltv: number = applyManualEmode80Ltv
-        ? 8000
-        : isEmode
-          ? reserveItem.asset.eModeLtv || 0
-          : reserveItem.asset.baseLTVasCollateral || 0;
+      const { ltv, liquidationThreshold: lt } = getReserveCollateralParams(
+        reserveItem.asset,
+        data.userEmodeCategoryId,
+        data.emodeCategories,
+      );
 
       const itemReserveLiquidationThreshold: BigNumber = new BigNumber(
         lt,

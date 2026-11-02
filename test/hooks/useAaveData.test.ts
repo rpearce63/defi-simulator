@@ -4,7 +4,9 @@ import {
   useAaveData,
   markets,
   AaveHealthFactorData,
+  AssetDetails,
   getCalculatedLiquidationScenario,
+  updateDerivedHealthFactorData,
 } from "../../hooks/useAaveData";
 import testDataItems from "../fixtures/aave/AaveHealthFactorData.json";
 import fetchMock from "jest-fetch-mock";
@@ -273,6 +275,96 @@ describe.each(testDataItems)(`useAaveData ()`, (testDataItem) => {
         ) / 100;
       expect(expectedHF).toEqual(1.0);
     });
+  });
+});
+
+describe("eMode collateral limits", () => {
+  const cbbtc = {
+    symbol: "cbBTC",
+    priceInUSD: 100000,
+    priceInMarketReferenceCurrency: 100000,
+    baseLTVasCollateral: 8100,
+    reserveLiquidationThreshold: 8400,
+    eModeCategoryId: 0,
+    eModeLtv: 0,
+    eModeLiquidationThreshold: 0,
+  } as AssetDetails;
+
+  const usdc = {
+    symbol: "USDC",
+    priceInUSD: 1,
+    priceInMarketReferenceCurrency: 1,
+  } as AssetDetails;
+
+  const position = (
+    userEmodeCategoryId: number,
+    emodeCategories?: AaveHealthFactorData["emodeCategories"],
+  ): AaveHealthFactorData => ({
+    healthFactor: 0,
+    totalBorrowsUSD: 0,
+    availableBorrowsUSD: 0,
+    totalCollateralMarketReferenceCurrency: 0,
+    totalBorrowsMarketReferenceCurrency: 0,
+    currentLiquidationThreshold: 0,
+    currentLoanToValue: 0,
+    userEmodeCategoryId,
+    emodeCategories,
+    userReservesData: [
+      {
+        asset: { ...cbbtc },
+        underlyingBalance: 1,
+        underlyingBalanceUSD: 100000,
+        underlyingBalanceMarketReferenceCurrency: 100000,
+        usageAsCollateralEnabledOnUser: true,
+      },
+    ],
+    userBorrowsData: [
+      {
+        asset: { ...usdc },
+        totalBorrows: 50000,
+        totalBorrowsUSD: 50000,
+        totalBorrowsMarketReferenceCurrency: 50000,
+        stableBorrowAPY: 0,
+      },
+    ],
+    txHistory: { data: [], isFetching: false, fetchError: "", lastFetched: 0 },
+  });
+
+  test("uses the category max LTV and liquidation threshold when E-Mode is on", () => {
+    const data = position(10, {
+      10: {
+        ltv: 8200,
+        liquidationThreshold: 8500,
+        isolated: false,
+        collateralSymbols: ["CBBTC"],
+        ltvzeroSymbols: [],
+      },
+    });
+    updateDerivedHealthFactorData(data, 1);
+    expect(data.currentLoanToValue).toBeCloseTo(0.82, PRECISION);
+    expect(data.currentLiquidationThreshold).toBeCloseTo(0.85, PRECISION);
+  });
+
+  test("keeps the reserve base limits when E-Mode is off", () => {
+    const data = position(0, {
+      10: {
+        ltv: 8200,
+        liquidationThreshold: 8500,
+        isolated: false,
+        collateralSymbols: ["CBBTC"],
+        ltvzeroSymbols: [],
+      },
+    });
+    updateDerivedHealthFactorData(data, 1);
+    expect(data.currentLoanToValue).toBeCloseTo(0.81, PRECISION);
+    expect(data.currentLiquidationThreshold).toBeCloseTo(0.84, PRECISION);
+  });
+
+  test("does not fall back to the previous hardcoded 80/83 E-Mode limits", () => {
+    const data = position(10);
+    updateDerivedHealthFactorData(data, 1);
+    expect(data.currentLoanToValue).toBeCloseTo(0.81, PRECISION);
+    expect(data.currentLiquidationThreshold).toBeCloseTo(0.84, PRECISION);
   });
 });
 

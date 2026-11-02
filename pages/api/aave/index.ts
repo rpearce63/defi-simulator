@@ -21,14 +21,125 @@ import {
   AaveMarketDataType,
   AssetDetails,
   BorrowedAssetDataItem,
+  EmodeCategoryConfig,
   HealthFactorData,
   ReserveAssetDataItem,
+  SIMULATED_EMODE_FALLBACK_CATEGORY_ID,
   getCalculatedLiquidationScenario,
   markets,
 } from "../../../hooks/useAaveData";
 import { getResolvedAddress } from "../resolver";
 
 const allowedMethods = ["POST", "OPTIONS"];
+
+const EMODE_POOL_ABI = [
+  "function getReservesList() view returns (address[])",
+  "function getEModeCategoryCollateralConfig(uint8 id) view returns (uint16 ltv, uint16 liquidationThreshold, uint16 liquidationBonus)",
+  "function getEModeCategoryCollateralBitmap(uint8 id) view returns (uint128)",
+  "function getEModeCategoryLtvzeroBitmap(uint8 id) view returns (uint128)",
+  "function getIsEModeCategoryIsolated(uint8 id) view returns (bool)",
+];
+
+const POOL_ADDRESS_PROVIDER_ABI = [
+  "function getPool() view returns (address)",
+];
+
+/** Symbols whose reserve-list index is set on an E-Mode bitmap. */
+const symbolsEnabledOnBitmap = (
+  bitmap: ethers.BigNumberish,
+  reservesList: string[],
+  symbolByUnderlying: Map<string, string>,
+): string[] => {
+  let bits = new BigNumber(bitmap.toString());
+  const symbols: string[] = [];
+  reservesList.forEach((address) => {
+    if (bits.mod(2).isEqualTo(1)) {
+      const symbol = symbolByUnderlying.get(address.toLowerCase());
+      if (symbol) symbols.push(symbol.toUpperCase());
+    }
+    bits = bits.dividedToIntegerBy(2);
+  });
+  return symbols;
+};
+
+/**
+ * Read current E-Mode LTV and liquidation threshold from the pool.
+ * The UI data provider still reports reserve eModeCategoryId as 0, so its
+ * eModeLtv / eModeLiquidationThreshold fields stay at 0 after Aave moved
+ * those limits onto the category collateral bitmap.
+ */
+const loadEmodeCategories = async (
+  provider: ethers.providers.Provider,
+  poolAddress: string,
+  reservesData: { symbol?: string; underlyingAsset?: string }[],
+  categoryIds: number[],
+): Promise<Record<number, EmodeCategoryConfig>> => {
+  const categories: Record<number, EmodeCategoryConfig> = {};
+  if (!poolAddress || categoryIds.length === 0) return categories;
+
+  const pool = new ethers.Contract(poolAddress, EMODE_POOL_ABI, provider);
+  let reservesList: string[] = [];
+  try {
+    reservesList = await pool.getReservesList();
+  } catch (err) {
+    console.error("Failed to load reserves list for eMode", err);
+    return categories;
+  }
+
+  const symbolByUnderlying = new Map<string, string>();
+  reservesData.forEach((reserve) => {
+    if (reserve.underlyingAsset && reserve.symbol) {
+      symbolByUnderlying.set(
+        reserve.underlyingAsset.toLowerCase(),
+        reserve.symbol,
+      );
+    }
+  });
+
+  await Promise.all(
+    categoryIds.map(async (id) => {
+      try {
+        const [config, collateralBitmap] = await Promise.all([
+          pool.getEModeCategoryCollateralConfig(id),
+          pool.getEModeCategoryCollateralBitmap(id),
+        ]);
+        const liquidationThreshold = Number(config.liquidationThreshold);
+        if (!liquidationThreshold) return;
+
+        let ltvzeroBitmap: ethers.BigNumberish = 0;
+        let isolated = false;
+        try {
+          [ltvzeroBitmap, isolated] = await Promise.all([
+            pool.getEModeCategoryLtvzeroBitmap(id),
+            pool.getIsEModeCategoryIsolated(id),
+          ]);
+        } catch {
+          // Pools from before bitmap eModes do not expose these getters.
+        }
+
+        categories[id] = {
+          ltv: Number(config.ltv),
+          liquidationThreshold,
+          isolated: Boolean(isolated),
+          collateralSymbols: symbolsEnabledOnBitmap(
+            collateralBitmap,
+            reservesList,
+            symbolByUnderlying,
+          ),
+          ltvzeroSymbols: symbolsEnabledOnBitmap(
+            ltvzeroBitmap,
+            reservesList,
+            symbolByUnderlying,
+          ),
+        };
+      } catch (err) {
+        console.error(`Failed to load eMode category ${id}`, err);
+      }
+    }),
+  );
+
+  return categories;
+};
 
 const handler = async (_req: NextApiRequest, res: NextApiResponse) => {
   try {
@@ -72,8 +183,13 @@ export const getAaveData = async (address: string, market: AaveMarketDataType) =
   const incentiveDataProviderContract = new UiIncentiveDataProvider(UiIncentiveDataCtx);
 
   const user = (await getResolvedAddress(address)) || "0x87cCC67f0c1b67745989542152DD4acff3841CD6";
+  const addressesProvider = new ethers.Contract(
+    market.addresses.LENDING_POOL_ADDRESS_PROVIDER,
+    POOL_ADDRESS_PROVIDER_ABI,
+    provider,
+  );
 
-  const [reserves, userReserves, reserveIncentives, userIncentives] = await Promise.all([
+  const [reserves, userReserves, reserveIncentives, userIncentives, poolAddress] = await Promise.all([
     poolDataProviderContract.getReservesHumanized({
       lendingPoolAddressProvider: market.addresses.LENDING_POOL_ADDRESS_PROVIDER,
     }),
@@ -87,7 +203,8 @@ export const getAaveData = async (address: string, market: AaveMarketDataType) =
     incentiveDataProviderContract.getUserReservesIncentivesDataHumanized({
       lendingPoolAddressProvider: market.addresses.LENDING_POOL_ADDRESS_PROVIDER,
       user
-    })
+    }),
+    addressesProvider.getPool().catch(() => ""),
   ]);
 
   const reservesArray = reserves.reservesData;
@@ -119,13 +236,27 @@ export const getAaveData = async (address: string, market: AaveMarketDataType) =
     userIncentives
   });
 
+  const userCategoryId = Number(userReserves.userEmodeCategoryId) || 0;
+  const categoryIds = Array.from(
+    new Set(
+      [userCategoryId, SIMULATED_EMODE_FALLBACK_CATEGORY_ID].filter((id) => id > 0),
+    ),
+  );
+  const emodeCategories = await loadEmodeCategories(
+    provider,
+    poolAddress,
+    reservesArray,
+    categoryIds,
+  );
+
   const hf: HealthFactorData = aaveUserSummaryToHealthFactor(
     userSummary,
     address,
     user, // if address is an ens, user will point to the resolved address.
     market,
     baseCurrencyData,
-    userReserves.userEmodeCategoryId
+    userReserves.userEmodeCategoryId,
+    emodeCategories,
   );
   return hf;
 };
@@ -136,7 +267,8 @@ const aaveUserSummaryToHealthFactor = (
   resolvedAddress: string,
   market: AaveMarketDataType,
   baseCurrencyData: any,
-  userEmodeCategoryId: number
+  userEmodeCategoryId: number,
+  emodeCategories?: Record<number, EmodeCategoryConfig>,
 ) => {
   const getAssetDetailsFromReserveItem = (reserveItem: ComputedUserReserve) => {
     const { reserve } = reserveItem;
@@ -261,7 +393,10 @@ const aaveUserSummaryToHealthFactor = (
     userReservesData: reserveData.userReservesData,
     userBorrowsData: reserveData.userBorrowsData,
     userEmodeCategoryId: reserveData.userEmodeCategoryId,
-    isInIsolationMode: reserveData.isInIsolationMode
+    isInIsolationMode: reserveData.isInIsolationMode,
+    ...(emodeCategories && Object.keys(emodeCategories).length
+      ? { emodeCategories }
+      : {}),
   };
 
   const hf: HealthFactorData = {
